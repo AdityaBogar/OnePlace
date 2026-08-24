@@ -273,9 +273,36 @@ class MockStore {
     const client = getSupabaseClient();
     if (client) {
       let query = client.from('visitors').select('*').order('created_at', { ascending: false });
-      if (salespersonId) query = query.eq('salesperson_id', salespersonId);
-      const { data, error } = await query;
-      if (!error && data) return data as Visitor[];
+
+      if (salespersonId) {
+        // The salespersonId may be a mock ID (e.g. 'user-sales-01') or a real Supabase UUID.
+        // Try to resolve the actual Supabase UUID by checking if we have a matching profile
+        // in the live DB for the current user's email.
+        let resolvedId = salespersonId;
+
+        // If it looks like a mock ID (not a UUID format), try to resolve via currentUser email
+        const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(salespersonId);
+        if (!isUuid && this.currentUser?.email) {
+          const { data: realProfile } = await client
+            .from('profiles')
+            .select('id')
+            .eq('email', this.currentUser.email)
+            .maybeSingle();
+          if (realProfile?.id) resolvedId = realProfile.id;
+        }
+
+        // Fetch by real ID AND by original mock ID in case both exist
+        const { data, error } = await client
+          .from('visitors')
+          .select('*')
+          .or(`salesperson_id.eq.${resolvedId},salesperson_id.eq.${salespersonId}`)
+          .order('created_at', { ascending: false });
+
+        if (!error && data) return data as Visitor[];
+      } else {
+        const { data, error } = await query;
+        if (!error && data) return data as Visitor[];
+      }
     }
     if (salespersonId) {
       return this.visitors.filter(v => v.salesperson_id === salespersonId);

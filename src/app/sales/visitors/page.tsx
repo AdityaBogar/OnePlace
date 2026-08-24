@@ -1,77 +1,52 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { mockDb } from '@/lib/supabase/client';
-import { Visitor, CommunicationLog, CommunicationPreference, Profile } from '@/types/database';
+import { Visitor } from '@/types/database';
 import { useAuth } from '@/lib/auth/context';
-import { 
-  Users, 
-  Search, 
-  Filter, 
-  Mail, 
-  Phone, 
-  Send, 
-  Ban, 
-  CheckCircle2, 
-  Clock, 
-  X, 
-  ShieldCheck,
-  RefreshCw,
-  MessageSquare
+import {
+  Users, Search, Mail, Phone, RefreshCw, ExternalLink, ChevronRight, UserPlus
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
 export default function VisitorManagementPage() {
   const { user } = useAuth();
+  const router = useRouter();
+
   const [visitors, setVisitors] = useState<Visitor[]>([]);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL');
-  
-  // Selected detail drawer state
-  const [selectedVisitorId, setSelectedVisitorId] = useState<string | null>(null);
-  const [selectedDetail, setSelectedDetail] = useState<{
-    visitor: Visitor;
-    preference: CommunicationPreference | { opted_out: boolean };
-    logs: CommunicationLog[];
-    salesperson?: Profile;
-  } | null>(null);
-
+  const [isLoading, setIsLoading] = useState(true);
   const [isProcessingWorker, setIsProcessingWorker] = useState(false);
+  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
 
-  const loadVisitors = async () => {
+  const loadVisitors = useCallback(async () => {
     if (!user) return;
-    // Sales users see their own assigned leads, Admins see all
-    const list = await mockDb.getVisitors(user.role === 'SALES' ? user.id : undefined);
-    setVisitors(list);
-  };
+    setIsLoading(true);
+    try {
+      // SALES users see only their own leads; ADMIN sees all
+      const list = await mockDb.getVisitors(user.role === 'SALES' ? user.id : undefined);
+      setVisitors(list);
+      setLastRefreshed(new Date());
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
 
   useEffect(() => {
     loadVisitors();
-  }, [user]);
-
-  const handleSelectVisitor = async (id: string) => {
-    setSelectedVisitorId(id);
-    const detail = await mockDb.getVisitorDetail(id);
-    if (detail && detail.visitor) {
-      setSelectedDetail(detail);
-    }
-  };
-
-  const handleToggleOptOut = async (visitorId: string, currentOptOut: boolean) => {
-    await mockDb.toggleOptOut(visitorId, !currentOptOut);
-    handleSelectVisitor(visitorId);
-  };
+  }, [loadVisitors]);
 
   const triggerFollowUpWorker = async () => {
     setIsProcessingWorker(true);
     try {
-      await fetch('/api/jobs/process', { method: 'POST' });
+      const res = await fetch('/api/jobs/process', { method: 'POST' });
+      const data = await res.json();
       await loadVisitors();
-      if (selectedVisitorId) {
-        await handleSelectVisitor(selectedVisitorId);
-      }
+      alert(`Worker completed. Processed ${data.processed || 0} job(s).`);
     } catch {
-      alert('Failed to process worker.');
+      alert('Failed to trigger worker.');
     } finally {
       setIsProcessingWorker(false);
     }
@@ -79,30 +54,59 @@ export default function VisitorManagementPage() {
 
   const filteredVisitors = visitors.filter((v) => {
     const q = search.toLowerCase();
-    const matchesSearch = v.name.toLowerCase().includes(q) || v.email.toLowerCase().includes(q) || v.phone.includes(q);
-    return matchesSearch;
+    return (
+      v.name.toLowerCase().includes(q) ||
+      v.email.toLowerCase().includes(q) ||
+      v.phone.includes(q) ||
+      v.inquiry_type.toLowerCase().includes(q)
+    );
   });
+
+  const inquiryColors: Record<string, string> = {
+    'Master Suite': 'bg-sky-500/20 text-sky-400 border-sky-500/30',
+    'Penthouse': 'bg-purple-500/20 text-purple-400 border-purple-500/30',
+    'Kitchen': 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+    'Financing': 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+    'Bulk': 'bg-rose-500/20 text-rose-400 border-rose-500/30',
+  };
+  const getInquiryColor = (type: string) => {
+    const key = Object.keys(inquiryColors).find(k => type.includes(k));
+    return key ? inquiryColors[key] : 'bg-slate-700/50 text-slate-300 border-slate-700';
+  };
 
   return (
     <DashboardShell>
       <div className="space-y-8">
+        {/* ── HEADER ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight">Visitor & Lead Management</h1>
-            <p className="text-xs text-slate-400 mt-1">Review visitor ownership, inquiry history, opt-out preferences, and communication logs.</p>
+            <p className="text-xs text-slate-400 mt-1">
+              {user?.role === 'ADMIN'
+                ? 'All registered visitors and leads across all sales representatives.'
+                : 'Your assigned leads — click any visitor to view communication logs and consent settings.'}
+            </p>
           </div>
 
-          <button
-            onClick={triggerFollowUpWorker}
-            disabled={isProcessingWorker}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-sky-400 hover:text-white text-xs font-semibold border border-slate-800 transition"
-          >
-            <RefreshCw className={`w-4 h-4 ${isProcessingWorker ? 'animate-spin' : ''}`} />
-            Run Scheduled Follow-up Worker
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/sales/inquiry/new"
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 text-white text-xs font-bold shadow-lg shadow-sky-500/20 transition"
+            >
+              <UserPlus className="w-4 h-4" /> New Lead
+            </Link>
+            <button
+              onClick={triggerFollowUpWorker}
+              disabled={isProcessingWorker}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-sky-400 hover:text-white text-xs font-semibold border border-slate-800 transition disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${isProcessingWorker ? 'animate-spin' : ''}`} />
+              {isProcessingWorker ? 'Running...' : 'Run Follow-up Worker'}
+            </button>
+          </div>
         </div>
 
-        {/* SEARCH & FILTERS */}
+        {/* ── SEARCH & STATS ── */}
         <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="relative w-full sm:w-96">
             <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
@@ -110,151 +114,91 @@ export default function VisitorManagementPage() {
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search visitor name, email, or mobile number..."
-              className="w-full pl-10 pr-4 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500 transition"
+              placeholder="Search by name, email, phone, or inquiry type..."
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-sky-500 transition"
             />
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-slate-400">
-            <span>Showing {filteredVisitors.length} of {visitors.length} leads</span>
+          <div className="flex items-center gap-4 text-xs">
+            <span className="text-slate-400">
+              Showing <strong className="text-white">{filteredVisitors.length}</strong> of <strong className="text-white">{visitors.length}</strong> leads
+            </span>
+            <button
+              onClick={loadVisitors}
+              className="flex items-center gap-1 text-slate-500 hover:text-sky-400 transition"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
+              {isLoading ? 'Loading...' : `Refreshed ${lastRefreshed.toLocaleTimeString()}`}
+            </button>
           </div>
         </div>
 
-        {/* RESPONSIVE VISITOR LIST (CARDS ON MOBILE, TABLE ON DESKTOP) */}
-        <div className="space-y-3">
-          {filteredVisitors.map((v) => (
-            <div
-              key={v.id}
-              onClick={() => handleSelectVisitor(v.id)}
-              className={`p-5 rounded-3xl border backdrop-blur-xl transition-all cursor-pointer ${
-                selectedVisitorId === v.id
-                  ? 'bg-sky-950/20 border-sky-500/50 ring-1 ring-sky-500/30'
-                  : 'bg-slate-900/80 border-slate-800/80 hover:border-slate-700'
-              }`}
-            >
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-sm font-bold text-white">{v.name}</h3>
-                    <span className="px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-400 text-[10px] font-semibold border border-sky-500/30">
-                      {v.inquiry_type}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
-                    <span className="flex items-center gap-1.5"><Mail className="w-3.5 h-3.5 text-slate-500" />{v.email}</span>
-                    <span className="flex items-center gap-1.5"><Phone className="w-3.5 h-3.5 text-slate-500" />{v.phone}</span>
-                  </div>
-                </div>
+        {/* ── VISITORS LIST ── */}
+        {isLoading && visitors.length === 0 ? (
+          <div className="py-16 text-center">
+            <RefreshCw className="w-8 h-8 text-sky-400 animate-spin mx-auto mb-3" />
+            <p className="text-sm text-slate-400">Loading visitors from database...</p>
+          </div>
+        ) : filteredVisitors.length === 0 ? (
+          <div className="py-16 text-center space-y-3">
+            <Users className="w-10 h-10 text-slate-600 mx-auto" />
+            <p className="text-sm font-semibold text-slate-400">
+              {search ? 'No visitors match your search.' : 'No leads yet.'}
+            </p>
+            {!search && (
+              <p className="text-xs text-slate-500">
+                Register a new inquiry using the <strong className="text-slate-300">New Lead</strong> button or the Front Desk kiosk.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredVisitors.map((v) => (
+              <Link
+                key={v.id}
+                href={`/sales/visitors/${v.id}`}
+                className="group block p-5 rounded-3xl border backdrop-blur-xl transition-all bg-slate-900/80 border-slate-800/80 hover:border-sky-500/50 hover:bg-sky-950/10 hover:shadow-lg hover:shadow-sky-500/5"
+              >
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-start gap-4">
+                    {/* Avatar */}
+                    <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-sky-500/30 to-blue-600/30 border border-sky-500/20 flex items-center justify-center text-sky-400 font-bold text-sm flex-none">
+                      {v.name.charAt(0).toUpperCase()}
+                    </div>
 
-                <div className="flex items-center gap-3 self-end sm:self-center">
-                  <span className="text-[11px] text-slate-500 font-mono">
-                    {new Date(v.created_at).toLocaleDateString()}
-                  </span>
-                  <button className="px-3.5 py-1.5 rounded-xl bg-slate-950 hover:bg-slate-800 text-sky-400 text-xs font-semibold border border-slate-800 transition">
-                    View Logs & Consent
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* VISITOR DETAIL MODAL DRAWER */}
-        {selectedDetail && (
-          <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex justify-end p-2 sm:p-4">
-            <div className="w-full max-w-xl bg-slate-900 border border-slate-800 rounded-3xl p-6 overflow-y-auto space-y-6 shadow-2xl relative">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-                <div>
-                  <h2 className="text-lg font-bold text-white">{selectedDetail.visitor.name}</h2>
-                  <p className="text-xs text-sky-400 font-medium">{selectedDetail.visitor.inquiry_type}</p>
-                </div>
-                <button
-                  onClick={() => setSelectedDetail(null)}
-                  className="p-2 rounded-xl bg-slate-800 text-slate-400 hover:text-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-
-              {/* Visitor Attributes */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Email Address</span>
-                  <span className="font-semibold text-white">{selectedDetail.visitor.email}</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">WhatsApp Phone</span>
-                  <span className="font-semibold text-white">{selectedDetail.visitor.phone}</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Assigned Sales Rep</span>
-                  <span className="font-semibold text-sky-400">{selectedDetail.salesperson?.full_name || 'Assigned Rep'}</span>
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800">
-                  <span className="text-slate-500 block text-[10px]">Opt-out / Consent</span>
-                  <span className={`font-semibold ${selectedDetail.preference.opted_out ? 'text-red-400' : 'text-emerald-400'}`}>
-                    {selectedDetail.preference.opted_out ? 'OPTED OUT' : 'SUBSCRIBED'}
-                  </span>
-                </div>
-              </div>
-
-              {/* Opt-out Toggle */}
-              <div className="flex items-center justify-between p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs">
-                <div>
-                  <span className="font-semibold text-white block">Visitor Consent State</span>
-                  <span className="text-[11px] text-slate-400">Respect marketing consent requirement</span>
-                </div>
-                <button
-                  onClick={() => handleToggleOptOut(selectedDetail.visitor.id, selectedDetail.preference.opted_out)}
-                  className={`px-3 py-1.5 rounded-xl font-bold text-xs transition ${
-                    selectedDetail.preference.opted_out
-                      ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40'
-                      : 'bg-red-500/20 text-red-400 border border-red-500/40'
-                  }`}
-                >
-                  {selectedDetail.preference.opted_out ? 'Re-enable Consent' : 'Set Opt-Out'}
-                </button>
-              </div>
-
-              {/* Notes */}
-              {selectedDetail.visitor.notes && (
-                <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 space-y-1">
-                  <span className="text-[11px] font-semibold text-slate-400 flex items-center gap-1">
-                    <MessageSquare className="w-3.5 h-3.5 text-sky-400" /> Tour Notes
-                  </span>
-                  <p className="text-xs text-slate-200 leading-relaxed">{selectedDetail.visitor.notes}</p>
-                </div>
-              )}
-
-              {/* Communication Logs */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider">Communication Logs ({selectedDetail.logs.length})</h3>
-                <div className="space-y-2">
-                  {selectedDetail.logs.length === 0 ? (
-                    <p className="text-xs text-slate-500 italic p-3 rounded-xl bg-slate-950">No delivery logs recorded yet. Run scheduled follow-up worker to send.</p>
-                  ) : (
-                    selectedDetail.logs.map((log) => (
-                      <div key={log.id} className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-sky-400">{log.channel}</span>
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                            log.status === 'SENT' || log.status === 'MOCK_SENT'
-                              ? 'bg-emerald-500/20 text-emerald-400'
-                              : log.status === 'SKIPPED_OPT_OUT'
-                              ? 'bg-amber-500/20 text-amber-400'
-                              : 'bg-red-500/20 text-red-400'
-                          }`}>
-                            {log.status}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-300">{log.content_summary}</p>
-                        <span className="text-[10px] text-slate-500 font-mono block">{new Date(log.sent_at).toLocaleString()}</span>
+                    <div className="space-y-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-sm font-bold text-white group-hover:text-sky-300 transition">
+                          {v.name}
+                        </h3>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-semibold border ${getInquiryColor(v.inquiry_type)}`}>
+                          {v.inquiry_type}
+                        </span>
                       </div>
-                    ))
-                  )}
+                      <div className="flex flex-wrap items-center gap-4 text-xs text-slate-400">
+                        <span className="flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-slate-600" />
+                          {v.email}
+                        </span>
+                        <span className="flex items-center gap-1.5">
+                          <Phone className="w-3.5 h-3.5 text-slate-600" />
+                          {v.phone}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 self-end sm:self-center flex-none">
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      {new Date(v.created_at).toLocaleDateString('en-US', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </span>
+                    <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-950 group-hover:bg-sky-500 text-sky-400 group-hover:text-white text-xs font-semibold border border-slate-800 group-hover:border-sky-400 transition">
+                      View Logs & Consent <ChevronRight className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
                 </div>
-              </div>
-            </div>
+              </Link>
+            ))}
           </div>
         )}
       </div>
