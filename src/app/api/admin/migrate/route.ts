@@ -76,7 +76,11 @@ CREATE TABLE IF NOT EXISTS public.email_templates (
 
 -- Enable RLS and allow service role full access
 ALTER TABLE public.email_templates ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "service_all" ON public.email_templates USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_templates' AND policyname = 'service_all') THEN
+    CREATE POLICY "service_all" ON public.email_templates USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- 2. Email replies from visitors (populated via SendGrid Inbound Parse webhook)
 CREATE TABLE IF NOT EXISTS public.email_replies (
@@ -90,7 +94,11 @@ CREATE TABLE IF NOT EXISTS public.email_replies (
 );
 
 ALTER TABLE public.email_replies ENABLE ROW LEVEL SECURITY;
-CREATE POLICY IF NOT EXISTS "service_all" ON public.email_replies USING (true) WITH CHECK (true);
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'email_replies' AND policyname = 'service_all') THEN
+    CREATE POLICY "service_all" ON public.email_replies USING (true) WITH CHECK (true);
+  END IF;
+END $$;
 
 -- 3. Add follow-up control columns to visitors
 ALTER TABLE public.visitors
