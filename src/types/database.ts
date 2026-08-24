@@ -105,8 +105,9 @@ export interface FollowUpJob {
 export interface EmailTemplate {
   id: string;
   salesperson_id: string;
+  follow_up_number: number;  // 1, 2, 3... (which follow-up this template is for)
   subject: string;
-  body_html: string;
+  body_text: string;         // Plain text — system wraps in HTML automatically
   created_at: string;
   updated_at: string;
 }

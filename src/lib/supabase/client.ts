@@ -542,29 +542,57 @@ class MockStore {
 
   // ── Email Templates ──────────────────────────────────────────────
 
-  async getEmailTemplate(salespersonId: string): Promise<EmailTemplate | null> {
+  /** Get a specific follow-up template by salesperson + follow-up number */
+  async getEmailTemplate(salespersonId: string, followUpNumber: number = 1): Promise<EmailTemplate | null> {
     const client = getSupabaseClient();
     if (client) {
       const { data, error } = await client
         .from('email_templates')
         .select('*')
         .eq('salesperson_id', salespersonId)
+        .eq('follow_up_number', followUpNumber)
         .maybeSingle();
       if (!error && data) return data as EmailTemplate;
-      // Table may not exist yet — return null gracefully
       if (error && !error.message.includes('does not exist')) console.warn('email_templates error:', error.message);
     }
     return null;
   }
 
-  async saveEmailTemplate(salespersonId: string, subject: string, bodyHtml: string): Promise<EmailTemplate | null> {
+  /** Get all templates for a salesperson (all follow-up numbers) */
+  async getAllEmailTemplates(salespersonId: string): Promise<EmailTemplate[]> {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data, error } = await client
+        .from('email_templates')
+        .select('*')
+        .eq('salesperson_id', salespersonId)
+        .order('follow_up_number', { ascending: true });
+      if (!error && data) return data as EmailTemplate[];
+      if (error && !error.message.includes('does not exist')) console.warn('email_templates error:', error.message);
+    }
+    return [];
+  }
+
+  /** Save / update a template for a specific follow-up number */
+  async saveEmailTemplate(
+    salespersonId: string,
+    followUpNumber: number,
+    subject: string,
+    bodyText: string
+  ): Promise<EmailTemplate | null> {
     const client = getSupabaseClient();
     if (client) {
       const { data, error } = await client
         .from('email_templates')
         .upsert(
-          { salesperson_id: salespersonId, subject, body_html: bodyHtml, updated_at: new Date().toISOString() },
-          { onConflict: 'salesperson_id' }
+          {
+            salesperson_id: salespersonId,
+            follow_up_number: followUpNumber,
+            subject,
+            body_text: bodyText,
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'salesperson_id,follow_up_number' }
         )
         .select()
         .single();
@@ -628,8 +656,8 @@ class MockStore {
     return 0;
   }
 
-  async scheduleNextFollowUp(visitorId: string, followUpNumber: number, delayMs: number = 86400000): Promise<FollowUpJob | null> {
-    // Schedule next follow-up job (default 24h later)
+  async scheduleNextFollowUp(visitorId: string, followUpNumber: number, delayMs: number = 60000): Promise<FollowUpJob | null> {
+    // Default: 1 minute between each follow-up
     const client = getSupabaseClient();
     const scheduledFor = new Date(Date.now() + delayMs).toISOString();
     if (client) {
