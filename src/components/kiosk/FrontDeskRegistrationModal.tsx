@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { Profile } from '@/types/database';
-import { mockDb } from '@/lib/supabase/client';
 import { Building2, User, Mail, Phone, UserCheck, MessageSquare, CheckCircle2, ArrowRight, X } from 'lucide-react';
 
 interface FrontDeskRegistrationModalProps {
@@ -26,14 +25,18 @@ export function FrontDeskRegistrationModal({ isOpen, onClose, onSuccess }: Front
 
   useEffect(() => {
     if (isOpen) {
-      mockDb.getProfiles().then((profs) => {
-        // Filter profiles for SALES or ADMIN representatives
-        const reps = profs.filter((p) => p.is_active && (p.role === 'SALES' || p.role === 'ADMIN'));
-        setSalesReps(reps);
-        if (reps.length > 0 && !selectedSalesId) {
-          setSelectedSalesId(reps[0].id);
-        }
-      });
+      // Fetch from server-side API (uses service role, bypasses RLS)
+      fetch('/api/admin/users')
+        .then((r) => r.json())
+        .then((json) => {
+          const profs: Profile[] = json.data ?? [];
+          const reps = profs.filter((p) => p.is_active && p.role === 'SALES');
+          setSalesReps(reps);
+          if (reps.length > 0 && !selectedSalesId) {
+            setSelectedSalesId(reps[0].id);
+          }
+        })
+        .catch(() => setSalesReps([]));
       // Reset form states
       setSuccess(false);
       setName('');
@@ -138,11 +141,15 @@ export function FrontDeskRegistrationModal({ isOpen, onClose, onSuccess }: Front
                   required
                   className="w-full px-4 py-3 rounded-xl bg-slate-950 border border-slate-800 focus:border-sky-500 text-white font-medium focus:outline-none transition"
                 >
-                  {salesReps.map((rep) => (
-                    <option key={rep.id} value={rep.id}>
-                      {rep.full_name} ({rep.email})
-                    </option>
-                  ))}
+                  {salesReps.length === 0 ? (
+                    <option value="" disabled>No sales accounts found</option>
+                  ) : (
+                    salesReps.map((rep) => (
+                      <option key={rep.id} value={rep.id}>
+                        {rep.full_name}
+                      </option>
+                    ))
+                  )}
                 </select>
               </div>
 
