@@ -55,37 +55,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [user, isLoading, pathname, router]);
 
   const login = async (email: string, pass: string) => {
-    const profiles = await mockDb.getProfiles();
-    const found = profiles.find((p) => p.email.toLowerCase() === email.toLowerCase());
+    try {
+      const res  = await fetch('/api/auth/login', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ email, password: pass }),
+      });
+      const json = await res.json();
 
-    if (!found) {
-      return { success: false, error: 'No account found with this email address.' };
-    }
+      if (!res.ok) {
+        return { success: false, error: json.error ?? 'Login failed.' };
+      }
 
-    if (!found.is_active) {
-      return { success: false, error: 'Your account has been deactivated. Contact Admin.' };
-    }
-
-    // Password verification logic
-    if (pass === 'Pikashoot123!' || pass.length >= 6) {
+      const found = json.profile;
       setUser(found);
       mockDb.currentUser = found;
       localStorage.setItem('luxe_user_id', found.id);
 
       if (found.must_change_password) {
         router.push('/change-password');
+      } else if (found.role === 'FRONT_DESK') {
+        router.push('/walkthrough');
       } else {
-        if (found.role === 'FRONT_DESK') {
-          router.push('/walkthrough');
-        } else {
-          router.push(found.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
-        }
+        router.push(found.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
       }
       return { success: true };
+    } catch {
+      return { success: false, error: 'Network error. Please try again.' };
     }
-
-    return { success: false, error: 'Invalid password. Default temporary password is Pikashoot123!' };
   };
+
 
   const logout = () => {
     setUser(null);
