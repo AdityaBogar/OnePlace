@@ -68,6 +68,26 @@ export default function VisitorDetailPage() {
 
   useEffect(() => { loadDetail(); }, [loadDetail]);
 
+  useEffect(() => {
+    // Run the follow-up worker automatically every 15 seconds in the background to process due jobs
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch('/api/jobs/process', { method: 'POST' });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.processed > 0) {
+            // Refresh details so the timeline and job status update in real-time
+            loadDetail();
+          }
+        }
+      } catch (err) {
+        console.error('Background worker auto-trigger failed:', err);
+      }
+    }, 15000);
+
+    return () => clearInterval(interval);
+  }, [loadDetail]);
+
   const handleToggleConsent = async () => {
     if (!detail) return;
     setIsTogglingConsent(true);
@@ -114,7 +134,8 @@ export default function VisitorDetailPage() {
   const handleRunWorker = async () => {
     setIsRunningWorker(true);
     try {
-      const res  = await fetch('/api/jobs/process', { method: 'POST' });
+      // Force processing of the next pending job for this specific visitor immediately (bypassing time check)
+      const res  = await fetch(`/api/jobs/process?visitorId=${encodeURIComponent(visitorId)}`, { method: 'POST' });
       const data = await res.json();
       await loadDetail();
       setSuccessMsg(`Follow-up worker ran — ${data.processed || 0} job(s) processed.`);

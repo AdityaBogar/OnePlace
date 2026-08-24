@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { NotificationService } from '@/lib/notifications/service';
 
@@ -7,13 +7,25 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
 
-async function processPendingJobs() {
-  // Fetch all PENDING jobs (service role bypasses RLS)
-  const { data: pendingJobs, error } = await supabase
+async function processPendingJobs(req: NextRequest) {
+  const { searchParams } = new URL(req.url);
+  const visitorId = searchParams.get('visitorId');
+
+  let query = supabase
     .from('follow_up_jobs')
     .select('*')
-    .eq('status', 'PENDING')
-    .order('scheduled_for', { ascending: true });
+    .eq('status', 'PENDING');
+
+  if (visitorId) {
+    // If a visitor is specified (e.g. manual "Send Follow-up Now"), fetch their next job immediately
+    query = query.eq('visitor_id', visitorId);
+  } else {
+    // Otherwise, fetch only pending jobs that are due (scheduled in the past or now)
+    const now = new Date().toISOString();
+    query = query.lte('scheduled_for', now);
+  }
+
+  const { data: pendingJobs, error } = await query.order('scheduled_for', { ascending: true });
 
   if (error) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
@@ -72,10 +84,10 @@ async function processPendingJobs() {
   });
 }
 
-export async function POST() {
-  return processPendingJobs();
+export async function POST(req: NextRequest) {
+  return processPendingJobs(req);
 }
 
-export async function GET() {
-  return processPendingJobs();
+export async function GET(req: NextRequest) {
+  return processPendingJobs(req);
 }
