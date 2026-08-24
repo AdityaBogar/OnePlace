@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { mockDb } from '@/lib/supabase/client';
+import { NotificationService } from '@/lib/notifications/service';
 
 export async function POST(req: Request) {
   try {
@@ -21,6 +22,7 @@ export async function POST(req: Request) {
       );
     }
 
+    // 1. Register visitor in database
     const { visitor, job } = await mockDb.registerVisitor({
       salesperson_id,
       name,
@@ -30,17 +32,29 @@ export async function POST(req: Request) {
       notes,
     });
 
-    // Auto-trigger background follow-up worker simulation in background (1 min scheduled)
-    // For fast demonstration during testing, also kick off a non-blocking trigger:
-    setTimeout(() => {
-      fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/jobs/process`, { method: 'POST' }).catch(() => {});
-    }, 60000);
+    // 2. Trigger instant follow-up email notification via SendGrid/SMTP
+    let notificationResults = null;
+    try {
+      await mockDb.updateJobStatus(job.id, 'PROCESSING');
+      notificationResults = await NotificationService.processVisitorFollowUp(visitor.id);
+      
+      const emailSuccess = notificationResults.emailResult.success;
+      await mockDb.updateJobStatus(
+        job.id, 
+        emailSuccess ? 'COMPLETED' : 'FAILED', 
+        notificationResults.emailResult.error
+      );
+    } catch (nErr: unknown) {
+      const nErrorMsg = nErr instanceof Error ? nErr.message : String(nErr);
+      await mockDb.updateJobStatus(job.id, 'FAILED', nErrorMsg);
+    }
 
     return NextResponse.json({
       success: true,
-      message: 'Visitor registered successfully. Follow-up scheduled for 1 minute.',
+      message: 'Visitor registered successfully and follow-up email dispatched.',
       visitor,
       job,
+      notifications: notificationResults,
     });
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : String(err);
