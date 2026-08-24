@@ -27,7 +27,7 @@ export async function GET() {
 
 /**
  * POST /api/admin/users
- * Creates a new profile row in Supabase.
+ * Creates a Supabase Auth user + profile row.
  * Body: { full_name, email, role }
  */
 export async function POST(req: NextRequest) {
@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `Invalid role. Must be one of: ${validRoles.join(', ')}` }, { status: 400 });
   }
 
-  // Check for duplicate email
+  // Check for duplicate email in profiles
   const { data: existing } = await supabase
     .from('profiles')
     .select('id')
@@ -54,10 +54,28 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 409 });
   }
 
+  // Step 1: Create the Supabase Auth user (this populates auth.users)
+  const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+    email,
+    password: 'Pikashoot123!',
+    email_confirm: true, // skip email verification
+  });
+
+  if (authError || !authData.user) {
+    console.error('Auth user creation error:', authError?.message);
+    return NextResponse.json(
+      { error: authError?.message ?? 'Failed to create auth user.' },
+      { status: 500 }
+    );
+  }
+
+  const authUserId = authData.user.id;
+
+  // Step 2: Insert profile using the auth user's ID
   const { data, error } = await supabase
     .from('profiles')
     .insert([{
-      id: crypto.randomUUID(),
+      id: authUserId,
       full_name,
       email,
       role,
@@ -68,12 +86,15 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (error) {
-    console.error('POST /api/admin/users error:', error.message);
+    // Rollback: delete the orphaned auth user
+    await supabase.auth.admin.deleteUser(authUserId);
+    console.error('POST /api/admin/users profile insert error:', error.message);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({ data }, { status: 201 });
 }
+
 
 /**
  * PATCH /api/admin/users
@@ -105,7 +126,7 @@ export async function PATCH(req: NextRequest) {
 
 /**
  * DELETE /api/admin/users?id=xxx
- * Permanently deletes a profile by ID.
+ * Deletes the auth user (cascades to profile via FK) and the profile row.
  */
 export async function DELETE(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -115,10 +136,11 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: 'id query param is required' }, { status: 400 });
   }
 
-  const { error } = await supabase
-    .from('profiles')
-    .delete()
-    .eq('id', id);
+  // Delete profile first (in case FK is RESTRICT not CASCADE)
+  await supabase.from('profiles').delete().eq('id', id);
+
+  // Then delete the auth user
+  const { error } = await supabase.auth.admin.deleteUser(id);
 
   if (error) {
     console.error('DELETE /api/admin/users error:', error.message);
