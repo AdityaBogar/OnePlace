@@ -107,22 +107,26 @@ export default function EmailSettingsPage() {
   const [showPreview, setShowPreview] = useState(false);
   const bodyRef = useRef<HTMLTextAreaElement>(null);
 
+  const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
   const getSalespersonId = useCallback(async (): Promise<string> => {
-    if (!user) return '';
+    if (!user) throw new Error('Not logged in');
+    // Try to get real UUID from Supabase profiles by email
     const supabase = (await import('@/lib/supabase/client')).getSupabaseBrowserClient();
     if (supabase && user.email) {
       const { data } = await supabase.from('profiles').select('id').eq('email', user.email).maybeSingle();
-      if (data?.id) return data.id;
+      if (data?.id && UUID_REGEX.test(data.id)) return data.id;
     }
-    return user.id;
+    // Fallback: use user.id only if it's a real UUID
+    if (UUID_REGEX.test(user.id)) return user.id;
+    throw new Error('Your user profile was not found in the database. Please contact your administrator.');
   }, [user]);
+
 
   useEffect(() => {
     const load = async () => {
-      const salespersonId = await getSalespersonId();
-      if (!salespersonId) { setIsLoading(false); return; }
-
       try {
+        const salespersonId = await getSalespersonId();
         const res = await fetch(`/api/email-templates?salespersonId=${encodeURIComponent(salespersonId)}`);
         const json = await res.json();
         const existing: { follow_up_number: number; subject: string; body_text: string }[] = json.data ?? [];
@@ -137,13 +141,15 @@ export default function EmailSettingsPage() {
           }
         }
         setTemplates(loaded);
-      } catch (e) {
+      } catch (e: unknown) {
+        setErrorMsg(e instanceof Error ? e.message : 'Failed to load templates.');
         console.error('Failed to load templates:', e);
       }
       setIsLoading(false);
     };
     load();
   }, [getSalespersonId]);
+
 
   const currentTemplate = templates[activeTab] || { subject: DEFAULT_SUBJECTS[activeTab] ?? '', body: DEFAULT_BODIES[activeTab] ?? '', saved: false };
 
