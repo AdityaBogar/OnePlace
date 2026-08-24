@@ -55,6 +55,8 @@ export interface Visitor {
   phone: string;
   inquiry_type: string;
   notes: string | null;
+  max_follow_ups: number;     // 1–10, default 3
+  follow_ups_sent: number;   // tracks how many have been sent
   created_at: string;
   updated_at: string;
 }
@@ -94,9 +96,29 @@ export interface FollowUpJob {
   scheduled_for: string;
   status: JobStatus;
   attempts: number;
+  follow_up_number: number;  // which follow-up this is (1st, 2nd, etc.)
   error: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface EmailTemplate {
+  id: string;
+  salesperson_id: string;
+  subject: string;
+  body_html: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EmailReply {
+  id: string;
+  visitor_id: string | null;
+  from_email: string;
+  from_name: string | null;
+  subject: string | null;
+  body_text: string | null;
+  received_at: string;
 }
 
 export interface AuditLog {

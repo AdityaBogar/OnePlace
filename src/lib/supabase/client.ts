@@ -9,7 +9,7 @@ import {
   INITIAL_COMM_LOGS, 
   INITIAL_JOBS 
 } from './mock-db';
-import { Profile, Model3D, Hotspot, Visitor, Inquiry, FollowUpJob, CommunicationLog, CommunicationPreference, UserRole } from '@/types/database';
+import { Profile, Model3D, Hotspot, Visitor, Inquiry, FollowUpJob, CommunicationLog, CommunicationPreference, UserRole, EmailTemplate, EmailReply } from '@/types/database';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
@@ -357,6 +357,7 @@ class MockStore {
             scheduled_for: scheduledTime,
             status: 'PENDING',
             attempts: 0,
+            follow_up_number: 1,
             error: null,
             created_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
@@ -373,6 +374,8 @@ class MockStore {
       phone: data.phone,
       inquiry_type: data.inquiry_type,
       notes: data.notes || null,
+      max_follow_ups: 3,
+      follow_ups_sent: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -403,6 +406,7 @@ class MockStore {
       scheduled_for: scheduledTime,
       status: 'PENDING',
       attempts: 0,
+      follow_up_number: 1,
       error: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
@@ -534,6 +538,123 @@ class MockStore {
       if (error) job.error = error;
       job.updated_at = new Date().toISOString();
     }
+  }
+
+  // ── Email Templates ──────────────────────────────────────────────
+
+  async getEmailTemplate(salespersonId: string): Promise<EmailTemplate | null> {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data, error } = await client
+        .from('email_templates')
+        .select('*')
+        .eq('salesperson_id', salespersonId)
+        .maybeSingle();
+      if (!error && data) return data as EmailTemplate;
+      // Table may not exist yet — return null gracefully
+      if (error && !error.message.includes('does not exist')) console.warn('email_templates error:', error.message);
+    }
+    return null;
+  }
+
+  async saveEmailTemplate(salespersonId: string, subject: string, bodyHtml: string): Promise<EmailTemplate | null> {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data, error } = await client
+        .from('email_templates')
+        .upsert(
+          { salesperson_id: salespersonId, subject, body_html: bodyHtml, updated_at: new Date().toISOString() },
+          { onConflict: 'salesperson_id' }
+        )
+        .select()
+        .single();
+      if (!error && data) return data as EmailTemplate;
+      if (error) console.error('saveEmailTemplate error:', error.message);
+    }
+    return null;
+  }
+
+  // ── Email Replies ─────────────────────────────────────────────────
+
+  async getEmailReplies(visitorId: string): Promise<EmailReply[]> {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data, error } = await client
+        .from('email_replies')
+        .select('*')
+        .eq('visitor_id', visitorId)
+        .order('received_at', { ascending: false });
+      if (!error && data) return data as EmailReply[];
+      if (error && !error.message.includes('does not exist')) console.warn('email_replies error:', error.message);
+    }
+    return [];
+  }
+
+  async storeEmailReply(reply: Omit<EmailReply, 'id'>): Promise<void> {
+    const client = getSupabaseClient();
+    if (client) {
+      await client.from('email_replies').insert([reply]);
+    }
+  }
+
+  // ── Visitor Follow-up Count ───────────────────────────────────────
+
+  async updateVisitorFollowUpCount(visitorId: string, maxFollowUps: number): Promise<boolean> {
+    const clamped = Math.min(10, Math.max(1, maxFollowUps));
+    const client = getSupabaseClient();
+    if (client) {
+      const { error } = await client
+        .from('visitors')
+        .update({ max_follow_ups: clamped, updated_at: new Date().toISOString() })
+        .eq('id', visitorId);
+      if (!error) return true;
+      console.error('updateVisitorFollowUpCount error:', error.message);
+    }
+    const v = this.visitors.find(v => v.id === visitorId);
+    if (v) v.max_follow_ups = clamped;
+    return true;
+  }
+
+  async incrementFollowUpsSent(visitorId: string): Promise<number> {
+    const client = getSupabaseClient();
+    if (client) {
+      const { data: current } = await client.from('visitors').select('follow_ups_sent').eq('id', visitorId).single();
+      const newCount = (current?.follow_ups_sent || 0) + 1;
+      await client.from('visitors').update({ follow_ups_sent: newCount, updated_at: new Date().toISOString() }).eq('id', visitorId);
+      return newCount;
+    }
+    const v = this.visitors.find(v => v.id === visitorId);
+    if (v) { v.follow_ups_sent = (v.follow_ups_sent || 0) + 1; return v.follow_ups_sent; }
+    return 0;
+  }
+
+  async scheduleNextFollowUp(visitorId: string, followUpNumber: number, delayMs: number = 86400000): Promise<FollowUpJob | null> {
+    // Schedule next follow-up job (default 24h later)
+    const client = getSupabaseClient();
+    const scheduledFor = new Date(Date.now() + delayMs).toISOString();
+    if (client) {
+      const { data, error } = await client.from('follow_up_jobs').insert([{
+        visitor_id: visitorId,
+        scheduled_for: scheduledFor,
+        status: 'PENDING',
+        attempts: 0,
+        follow_up_number: followUpNumber,
+      }]).select().single();
+      if (!error && data) return data as FollowUpJob;
+    }
+    const newJob: FollowUpJob = {
+      id: `job-${Date.now()}`,
+      visitor_id: visitorId,
+      scheduled_for: scheduledFor,
+      status: 'PENDING',
+      attempts: 0,
+      follow_up_number: followUpNumber,
+      error: null,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    };
+    this.followUpJobs.push(newJob);
+    return newJob;
   }
 }
 

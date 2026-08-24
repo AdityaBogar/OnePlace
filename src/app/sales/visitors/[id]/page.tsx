@@ -1,14 +1,15 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { mockDb } from '@/lib/supabase/client';
-import { Visitor, CommunicationLog, CommunicationPreference, Profile, FollowUpJob } from '@/types/database';
+import { Visitor, CommunicationLog, CommunicationPreference, Profile, FollowUpJob, EmailReply } from '@/types/database';
 import { useAuth } from '@/lib/auth/context';
 import {
   ArrowLeft, Mail, Phone, MessageSquare, ShieldCheck, ShieldOff,
   Clock, CheckCircle2, XCircle, RefreshCw, Send, User, Calendar,
-  AlertCircle, Info, Zap, FileText
+  AlertCircle, Info, Zap, FileText, Reply, ChevronRight, Settings2,
+  Hash
 } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
 
@@ -27,23 +28,30 @@ export default function VisitorDetailPage() {
   const { user } = useAuth();
 
   const [detail, setDetail] = useState<VisitorDetail | null>(null);
+  const [replies, setReplies] = useState<EmailReply[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isTogglingConsent, setIsTogglingConsent] = useState(false);
   const [isRunningWorker, setIsRunningWorker] = useState(false);
+  const [isSavingFollowUpCount, setIsSavingFollowUpCount] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
+  const [localMaxFollowUps, setLocalMaxFollowUps] = useState<number>(3);
 
-  const loadDetail = async () => {
+  const loadDetail = useCallback(async () => {
     if (!visitorId) return;
     const data = await mockDb.getVisitorDetail(visitorId);
     if (data) {
       setDetail(data as VisitorDetail);
+      setLocalMaxFollowUps(data.visitor.max_follow_ups ?? 3);
     }
+    // Load email replies
+    const emailReplies = await mockDb.getEmailReplies(visitorId);
+    setReplies(emailReplies);
     setIsLoading(false);
-  };
+  }, [visitorId]);
 
   useEffect(() => {
     loadDetail();
-  }, [visitorId]);
+  }, [loadDetail]);
 
   const handleToggleConsent = async () => {
     if (!detail) return;
@@ -55,12 +63,23 @@ export default function VisitorDetailPage() {
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
+  const handleSaveFollowUpCount = async () => {
+    if (!detail) return;
+    setIsSavingFollowUpCount(true);
+    await mockDb.updateVisitorFollowUpCount(detail.visitor.id, localMaxFollowUps);
+    await loadDetail();
+    setIsSavingFollowUpCount(false);
+    setSuccessMsg(`Follow-up limit updated to ${localMaxFollowUps} emails.`);
+    setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
   const handleRunWorker = async () => {
     setIsRunningWorker(true);
     try {
-      await fetch('/api/jobs/process', { method: 'POST' });
+      const res = await fetch('/api/jobs/process', { method: 'POST' });
+      const data = await res.json();
       await loadDetail();
-      setSuccessMsg('Follow-up worker ran — communication logs updated.');
+      setSuccessMsg(`Follow-up worker ran — ${data.processed || 0} job(s) processed.`);
       setTimeout(() => setSuccessMsg(''), 4000);
     } catch {
       alert('Worker trigger failed.');
@@ -109,11 +128,14 @@ export default function VisitorDetailPage() {
 
   const { visitor, preference, logs, jobs, salesperson } = detail;
   const isOptedOut = preference.opted_out;
+  const maxFollowUps = visitor.max_follow_ups ?? 3;
+  const followUpsSent = visitor.follow_ups_sent ?? 0;
+  const emailLogs = logs.filter(l => l.channel === 'EMAIL');
 
   return (
     <DashboardShell>
       <div className="space-y-8 max-w-4xl mx-auto">
-        {/* ── BREADCRUMB & HEADER ── */}
+        {/* ── HEADER ── */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <button
@@ -141,7 +163,7 @@ export default function VisitorDetailPage() {
             className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-sky-400 hover:text-white text-xs font-semibold border border-slate-800 transition disabled:opacity-50"
           >
             <Zap className={`w-4 h-4 ${isRunningWorker ? 'animate-pulse text-amber-400' : ''}`} />
-            {isRunningWorker ? 'Running Worker...' : 'Trigger Follow-up Worker'}
+            {isRunningWorker ? 'Running Worker...' : 'Send Follow-up Now'}
           </button>
         </div>
 
@@ -156,74 +178,89 @@ export default function VisitorDetailPage() {
         {/* ── VISITOR INFO GRID ── */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5" /> Email Address
-            </span>
-            <a href={`mailto:${visitor.email}`} className="text-sm font-semibold text-white hover:text-sky-400 transition break-all">
-              {visitor.email}
-            </a>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Mail className="w-3.5 h-3.5" /> Email</span>
+            <a href={`mailto:${visitor.email}`} className="text-sm font-semibold text-white hover:text-sky-400 transition break-all">{visitor.email}</a>
           </div>
-
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Phone className="w-3.5 h-3.5" /> WhatsApp / Phone
-            </span>
-            <a href={`tel:${visitor.phone}`} className="text-sm font-semibold text-white hover:text-sky-400 transition">
-              {visitor.phone}
-            </a>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Phone className="w-3.5 h-3.5" /> WhatsApp / Phone</span>
+            <a href={`tel:${visitor.phone}`} className="text-sm font-semibold text-white hover:text-sky-400 transition">{visitor.phone}</a>
           </div>
-
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5" /> Assigned Sales Rep
-            </span>
-            <p className="text-sm font-semibold text-sky-400">
-              {salesperson?.full_name || '—'}
-            </p>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><User className="w-3.5 h-3.5" /> Assigned Sales Rep</span>
+            <p className="text-sm font-semibold text-sky-400">{salesperson?.full_name || '—'}</p>
           </div>
-
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5" /> Registered On
-            </span>
-            <p className="text-sm font-semibold text-white">
-              {new Date(visitor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
-            </p>
-            <p className="text-[10px] text-slate-500 font-mono">
-              {new Date(visitor.created_at).toLocaleTimeString()}
-            </p>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Calendar className="w-3.5 h-3.5" /> Registered On</span>
+            <p className="text-sm font-semibold text-white">{new Date(visitor.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
           </div>
-
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Send className="w-3.5 h-3.5" /> Communications Sent
-            </span>
-            <p className="text-sm font-semibold text-white">{logs.length} message{logs.length !== 1 ? 's' : ''}</p>
-            <p className="text-[10px] text-slate-500">
-              {logs.filter(l => l.status === 'SENT' || l.status === 'MOCK_SENT').length} delivered
-            </p>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Send className="w-3.5 h-3.5" /> Emails Sent</span>
+            <p className="text-sm font-semibold text-white">{followUpsSent} / {maxFollowUps}</p>
+            <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden mt-1">
+              <div className="h-full bg-gradient-to-r from-sky-500 to-blue-600 transition-all" style={{ width: `${Math.min(100, (followUpsSent / maxFollowUps) * 100)}%` }} />
+            </div>
           </div>
-
           <div className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-1">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5" /> Follow-up Jobs
-            </span>
-            <p className="text-sm font-semibold text-white">{jobs.length} job{jobs.length !== 1 ? 's' : ''}</p>
-            <p className="text-[10px] text-slate-500">
-              {jobs.filter(j => j.status === 'COMPLETED').length} completed
-            </p>
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5"><Reply className="w-3.5 h-3.5" /> Replies Received</span>
+            <p className="text-sm font-semibold text-white">{replies.length} reply{replies.length !== 1 ? '' : ''}</p>
           </div>
         </div>
 
         {/* ── TOUR NOTES ── */}
         {visitor.notes && (
           <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-2">
-            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-              <FileText className="w-4 h-4 text-sky-400" /> Tour Notes
-            </h3>
+            <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-2"><FileText className="w-4 h-4 text-sky-400" /> Tour Notes</h3>
             <p className="text-sm text-slate-200 leading-relaxed">{visitor.notes}</p>
           </div>
         )}
+
+        {/* ── FOLLOW-UP COUNT CONTROL ── */}
+        <div className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold text-white flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-sky-400" />
+              Follow-up Schedule Control
+            </h3>
+            <span className="text-[10px] text-slate-500">Max 10 follow-ups allowed</span>
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-slate-400">Number of follow-up emails to send this lead:</span>
+              <span className="font-bold text-white text-base w-8 text-center">{localMaxFollowUps}</span>
+            </div>
+            <input
+              type="range"
+              min={1}
+              max={10}
+              value={localMaxFollowUps}
+              onChange={e => setLocalMaxFollowUps(Number(e.target.value))}
+              className="w-full h-2 rounded-full appearance-none cursor-pointer accent-sky-500"
+              style={{ background: `linear-gradient(to right, #0ea5e9 ${(localMaxFollowUps - 1) / 9 * 100}%, #1e293b ${(localMaxFollowUps - 1) / 9 * 100}%)` }}
+            />
+            <div className="flex justify-between text-[10px] text-slate-600">
+              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(n => (
+                <span key={n} className={n === localMaxFollowUps ? 'text-sky-400 font-bold' : ''}>{n}</span>
+              ))}
+            </div>
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] text-slate-500">
+                {followUpsSent} sent so far · {Math.max(0, localMaxFollowUps - followUpsSent)} remaining after save
+                {localMaxFollowUps <= followUpsSent && (
+                  <span className="ml-2 text-amber-400 font-semibold">⚠ Already at or above limit — no more will be sent</span>
+                )}
+              </p>
+              <button
+                onClick={handleSaveFollowUpCount}
+                disabled={isSavingFollowUpCount || localMaxFollowUps === maxFollowUps}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white text-xs font-bold border border-sky-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isSavingFollowUpCount ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
+                {localMaxFollowUps === maxFollowUps ? 'Saved' : 'Save Limit'}
+              </button>
+            </div>
+          </div>
+        </div>
 
         {/* ── CONSENT MANAGEMENT ── */}
         <div className={`p-5 rounded-2xl border-2 ${isOptedOut ? 'bg-red-950/20 border-red-500/40' : 'bg-emerald-950/20 border-emerald-500/40'}`}>
@@ -233,153 +270,155 @@ export default function VisitorDetailPage() {
                 {isOptedOut ? <ShieldOff className="w-5 h-5" /> : <ShieldCheck className="w-5 h-5" />}
               </div>
               <div>
-                <h3 className="text-sm font-bold text-white">
-                  Visitor Consent: {isOptedOut ? 'Opted Out' : 'Subscribed'}
-                </h3>
+                <h3 className="text-sm font-bold text-white">Visitor Consent: {isOptedOut ? 'Opted Out' : 'Subscribed'}</h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {isOptedOut
-                    ? 'This visitor has opted out of marketing communications. No further emails or WhatsApp messages will be sent.'
-                    : 'This visitor has consented to receiving follow-up emails and property updates from your team.'}
+                  {isOptedOut ? 'No further emails or messages will be sent to this visitor.' : 'This visitor has consented to receive follow-up emails and property updates.'}
                 </p>
                 {'opt_out_timestamp' in preference && preference.opt_out_timestamp && (
-                  <p className="text-[10px] text-slate-500 mt-1 font-mono">
-                    Opted out at: {new Date(preference.opt_out_timestamp).toLocaleString()}
-                  </p>
+                  <p className="text-[10px] text-slate-500 mt-1 font-mono">Opted out: {new Date(preference.opt_out_timestamp).toLocaleString()}</p>
                 )}
               </div>
             </div>
             <button
               onClick={handleToggleConsent}
               disabled={isTogglingConsent}
-              className={`flex-none flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition disabled:opacity-50 ${
-                isOptedOut
-                  ? 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/40'
-                  : 'bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/40'
-              }`}
+              className={`flex-none flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs transition disabled:opacity-50 ${isOptedOut ? 'bg-emerald-500/20 hover:bg-emerald-500 text-emerald-400 hover:text-white border border-emerald-500/40' : 'bg-red-500/20 hover:bg-red-500 text-red-400 hover:text-white border border-red-500/40'}`}
             >
-              {isTogglingConsent ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : isOptedOut ? (
-                <ShieldCheck className="w-3.5 h-3.5" />
-              ) : (
-                <ShieldOff className="w-3.5 h-3.5" />
-              )}
+              {isTogglingConsent ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : isOptedOut ? <ShieldCheck className="w-3.5 h-3.5" /> : <ShieldOff className="w-3.5 h-3.5" />}
               {isOptedOut ? 'Re-enable Consent' : 'Set Opt-Out'}
             </button>
           </div>
         </div>
 
-        {/* ── COMMUNICATION LOGS ── */}
+        {/* ── COMMUNICATION LOGS + REPLIES (INTERLEAVED) ── */}
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <MessageSquare className="w-5 h-5 text-sky-400" />
-              Communication Logs
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">
-                {logs.length}
-              </span>
+              Communication Timeline
+              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">{emailLogs.length} sent · {replies.length} replies</span>
             </h2>
+            <button onClick={loadDetail} className="text-xs text-slate-500 hover:text-sky-400 flex items-center gap-1 transition">
+              <RefreshCw className="w-3.5 h-3.5" /> Refresh
+            </button>
           </div>
 
-          {logs.length === 0 ? (
+          {emailLogs.length === 0 && replies.length === 0 ? (
             <div className="p-8 rounded-2xl bg-slate-900/80 border border-slate-800 text-center space-y-2">
               <Info className="w-8 h-8 mx-auto text-slate-600" />
-              <p className="text-sm font-semibold text-slate-400">No communications recorded yet</p>
-              <p className="text-xs text-slate-500">Click "Trigger Follow-up Worker" above to send the follow-up email to this visitor.</p>
+              <p className="text-sm font-semibold text-slate-400">No communications yet</p>
+              <p className="text-xs text-slate-500">Click "Send Follow-up Now" to dispatch the first email to this visitor.</p>
             </div>
           ) : (
             <div className="space-y-3">
-              {logs.map((log, idx) => (
-                <div
-                  key={log.id}
-                  className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3"
-                >
-                  {/* Log Header */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${
-                        log.channel === 'EMAIL'
-                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
-                          : 'bg-green-500/20 text-green-400 border-green-500/30'
-                      }`}>
-                        {log.channel === 'EMAIL' ? <Mail className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
-                        {log.channel}
+              {/* Build interleaved timeline of sent emails + replies */}
+              {buildTimeline(emailLogs, replies).map((item, idx) => {
+                if (item.type === 'sent') {
+                  const log = item.data as CommunicationLog;
+                  const followUpMatch = log.content_summary?.match(/\[Follow-up #(\d+)\]/);
+                  const followUpNum = followUpMatch ? Number(followUpMatch[1]) : null;
+                  return (
+                    <div key={log.id} className="p-5 rounded-2xl bg-slate-900/80 border border-slate-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {followUpNum && (
+                            <span className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/20 text-[11px] font-bold">
+                              <Hash className="w-3 h-3" />Follow-up {followUpNum}
+                            </span>
+                          )}
+                          <span className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${log.channel === 'EMAIL' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-green-500/20 text-green-400 border-green-500/30'}`}>
+                            {log.channel === 'EMAIL' ? <Mail className="w-3 h-3" /> : <Phone className="w-3 h-3" />}
+                            {log.channel}
+                          </span>
+                          <span className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${logStatusColor(log.status)}`}>
+                            {logStatusIcon(log.status)}
+                            {log.status.replace('_', ' ')}
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {new Date(log.sent_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
                       </div>
-                      <span className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold border ${logStatusColor(log.status)}`}>
-                        {logStatusIcon(log.status)}
-                        {log.status.replace('_', ' ')}
-                      </span>
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="text-slate-600 font-medium">To:</span>
+                        <span className="text-slate-200 font-medium">{log.recipient}</span>
+                      </div>
+                      {log.content_summary && (
+                        <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80">
+                          <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Message Preview</p>
+                          <p className="text-xs text-slate-300 leading-relaxed">
+                            {log.content_summary.replace(/^\[Follow-up #\d+\]\s*/, '')}
+                          </p>
+                        </div>
+                      )}
+                      {log.error_message && (
+                        <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
+                          <XCircle className="w-3.5 h-3.5 text-red-400 flex-none mt-0.5" />
+                          <p className="text-[11px] text-red-300 font-mono">{log.error_message}</p>
+                        </div>
+                      )}
                     </div>
-                    <span className="text-[10px] text-slate-500 font-mono">
-                      #{idx + 1} · {new Date(log.sent_at).toLocaleString('en-US', {
-                        month: 'short', day: 'numeric', year: 'numeric',
-                        hour: '2-digit', minute: '2-digit'
-                      })}
-                    </span>
-                  </div>
-
-                  {/* Recipient */}
-                  <div className="flex items-center gap-2 text-xs text-slate-400">
-                    <span className="text-slate-600 font-medium">To:</span>
-                    <span className="text-slate-200 font-medium">{log.recipient}</span>
-                  </div>
-
-                  {/* Message Content */}
-                  {log.content_summary && (
-                    <div className="p-3.5 rounded-xl bg-slate-950/70 border border-slate-800/80">
-                      <p className="text-xs text-slate-200 font-medium mb-1 text-[10px] text-slate-500 uppercase tracking-wider">Message Preview</p>
-                      <p className="text-xs text-slate-300 leading-relaxed">{log.content_summary}</p>
+                  );
+                } else {
+                  // Email reply from visitor
+                  const reply = item.data as EmailReply;
+                  return (
+                    <div key={reply.id} className="ml-6 p-5 rounded-2xl bg-emerald-950/20 border border-emerald-500/30 space-y-3 relative">
+                      <div className="absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-px bg-emerald-500/30" />
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[11px] font-bold">
+                            <Reply className="w-3 h-3" />
+                            Visitor Reply
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-500 font-mono">
+                          {new Date(reply.received_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2 text-xs text-slate-400">
+                        <span className="text-slate-600 font-medium">From:</span>
+                        <span className="text-emerald-300 font-semibold">{reply.from_name || visitor.name} &lt;{reply.from_email}&gt;</span>
+                      </div>
+                      {reply.subject && (
+                        <p className="text-[11px] text-slate-400"><span className="text-slate-600">Subject:</span> {reply.subject}</p>
+                      )}
+                      {reply.body_text && (
+                        <div className="p-3.5 rounded-xl bg-emerald-950/30 border border-emerald-500/20">
+                          <p className="text-xs text-emerald-100 leading-relaxed whitespace-pre-wrap">{reply.body_text}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-
-                  {/* Error message if failed */}
-                  {log.error_message && (
-                    <div className="flex items-start gap-2 p-3 rounded-xl bg-red-500/10 border border-red-500/20">
-                      <XCircle className="w-3.5 h-3.5 text-red-400 flex-none mt-0.5" />
-                      <p className="text-[11px] text-red-300 leading-relaxed font-mono">{log.error_message}</p>
-                    </div>
-                  )}
-                </div>
-              ))}
+                  );
+                }
+              })}
             </div>
           )}
         </div>
 
-        {/* ── FOLLOW-UP JOBS TIMELINE ── */}
+        {/* ── FOLLOW-UP JOB TIMELINE ── */}
         {jobs.length > 0 && (
           <div className="space-y-4">
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Clock className="w-5 h-5 text-sky-400" />
-              Follow-up Job History
-              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">
-                {jobs.length}
-              </span>
+              Follow-up Job Queue
+              <span className="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">{jobs.length}</span>
             </h2>
             <div className="space-y-2">
-              {jobs.map((job) => (
-                <div
-                  key={job.id}
-                  className="flex items-center justify-between p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-xs"
-                >
+              {jobs.map(job => (
+                <div key={job.id} className="flex items-center justify-between p-4 rounded-xl bg-slate-900/80 border border-slate-800 text-xs">
                   <div className="flex items-center gap-3">
-                    <div className={`w-2.5 h-2.5 rounded-full flex-none ${
-                      job.status === 'COMPLETED' ? 'bg-emerald-400' :
-                      job.status === 'FAILED' ? 'bg-red-400' :
-                      job.status === 'PROCESSING' ? 'bg-amber-400 animate-pulse' :
-                      'bg-slate-500'
-                    }`} />
+                    <div className={`w-2.5 h-2.5 rounded-full flex-none ${job.status === 'COMPLETED' ? 'bg-emerald-400' : job.status === 'FAILED' ? 'bg-red-400' : job.status === 'PROCESSING' ? 'bg-amber-400 animate-pulse' : 'bg-slate-500'}`} />
                     <div>
                       <span className="font-semibold text-white capitalize">{job.status.toLowerCase()}</span>
-                      <span className="text-slate-500 ml-2">· {job.attempts} attempt{job.attempts !== 1 ? 's' : ''}</span>
+                      <span className="text-slate-500 ml-2">
+                        · Follow-up #{job.follow_up_number ?? 1} · {job.attempts} attempt{job.attempts !== 1 ? 's' : ''}
+                      </span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-[10px] text-slate-500 font-mono">
-                      Scheduled: {new Date(job.scheduled_for).toLocaleString()}
-                    </p>
-                    {job.error && (
-                      <p className="text-[10px] text-red-400 font-mono mt-0.5 max-w-xs truncate">{job.error}</p>
-                    )}
+                    <p className="text-[10px] text-slate-500 font-mono">Scheduled: {new Date(job.scheduled_for).toLocaleString()}</p>
+                    {job.error && <p className="text-[10px] text-red-400 font-mono mt-0.5 max-w-xs truncate">{job.error}</p>}
                   </div>
                 </div>
               ))}
@@ -389,4 +428,17 @@ export default function VisitorDetailPage() {
       </div>
     </DashboardShell>
   );
+}
+
+/** Merges email logs and replies into a chronological timeline */
+function buildTimeline(
+  logs: CommunicationLog[],
+  replies: EmailReply[]
+): { type: 'sent' | 'reply'; data: CommunicationLog | EmailReply; time: Date }[] {
+  const emailLogs = logs.filter(l => l.channel === 'EMAIL');
+  const items = [
+    ...emailLogs.map(l => ({ type: 'sent' as const, data: l, time: new Date(l.sent_at) })),
+    ...replies.map(r => ({ type: 'reply' as const, data: r, time: new Date(r.received_at) })),
+  ];
+  return items.sort((a, b) => a.time.getTime() - b.time.getTime());
 }

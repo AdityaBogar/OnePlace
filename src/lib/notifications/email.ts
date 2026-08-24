@@ -6,6 +6,7 @@ export interface EmailPayload {
   subject: string;
   html: string;
   text?: string;
+  replyTo?: string; // Set to salesperson email so visitor replies land in their inbox
 }
 
 export interface NotificationResult {
@@ -43,6 +44,7 @@ export async function sendEmailNotification(payload: EmailPayload): Promise<Noti
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to: payload.to,
+        replyTo: payload.replyTo || fromEmail,
         subject: payload.subject,
         html: payload.html,
         text: payload.text || payload.subject,
@@ -80,7 +82,7 @@ export async function sendEmailNotification(payload: EmailPayload): Promise<Noti
           email: fromEmail,
           name: fromName,
         },
-        replyTo: process.env.SENDGRID_REPLY_TO || fromEmail,
+        replyTo: payload.replyTo || process.env.SENDGRID_REPLY_TO || fromEmail,
         subject: payload.subject,
         html: payload.html,
         text: payload.text || payload.subject,

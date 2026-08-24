@@ -17,7 +17,8 @@ import {
   X, 
   ShieldCheck, 
   BadgeCheck,
-  UserCheck
+  UserCheck,
+  Mail
 } from 'lucide-react';
 
 export function DashboardShell({ children }: { children: React.ReactNode }) {
@@ -43,6 +44,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
     { name: '3D Walkthrough', href: '/walkthrough', icon: Compass },
     { name: 'New Inquiry Registration', href: '/sales/inquiry/new', icon: UserPlus },
     { name: 'My Visitors & Leads', href: '/sales/visitors', icon: UserCheck },
+    { name: 'Email Template Settings', href: '/sales/email-settings', icon: Mail },
   ];
 
   const navItems = isAdmin ? adminNav : salesNav;

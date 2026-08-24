@@ -10,10 +10,12 @@ export async function POST() {
     for (const job of pendingJobs) {
       await mockDb.updateJobStatus(job.id, 'PROCESSING');
       try {
-        const results = await NotificationService.processVisitorFollowUp(job.visitor_id);
+        // Pass the follow_up_number so templates can render the correct "follow-up #N" label
+        const followUpNumber = job.follow_up_number ?? 1;
+        const results = await NotificationService.processVisitorFollowUp(job.visitor_id, followUpNumber);
         const isSuccess = results.emailResult.success;
         await mockDb.updateJobStatus(job.id, isSuccess ? 'COMPLETED' : 'FAILED', results.emailResult.error);
-        processed.push({ jobId: job.id, results });
+        processed.push({ jobId: job.id, followUpNumber, results });
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         await mockDb.updateJobStatus(job.id, 'FAILED', errorMsg);
@@ -23,8 +25,8 @@ export async function POST() {
 
     return NextResponse.json({
       success: true,
+      processed: processed.length,
       pendingCount: pendingJobs.length,
-      processedCount: processed.length,
       details: processed,
     });
   } catch (err: unknown) {
