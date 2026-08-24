@@ -1,7 +1,7 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Profile } from '@/types/database';
+import { Profile, UserRole } from '@/types/database';
 import { mockDb } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 
@@ -11,7 +11,7 @@ interface AuthContextType {
   login: (email: string, pass: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
   changePassword: (newPass: string) => Promise<boolean>;
-  setUserRole: (role: 'ADMIN' | 'SALES') => void;
+  setUserRole: (role: UserRole) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -48,9 +48,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Role-based route guard
     if (pathname.startsWith('/admin') && user?.role !== 'ADMIN') {
-      router.push(user ? (user.role === 'SALES' ? '/sales/dashboard' : '/') : '/login');
+      router.push(user ? (user.role === 'SALES' ? '/sales/dashboard' : '/walkthrough') : '/login');
     } else if (pathname.startsWith('/sales') && user?.role !== 'SALES' && user?.role !== 'ADMIN') {
-      router.push(user ? '/admin/dashboard' : '/login');
+      router.push(user ? (user.role === 'FRONT_DESK' ? '/walkthrough' : '/admin/dashboard') : '/login');
     }
   }, [user, isLoading, pathname, router]);
 
@@ -75,7 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (found.must_change_password) {
         router.push('/change-password');
       } else {
-        router.push(found.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+        if (found.role === 'FRONT_DESK') {
+          router.push('/walkthrough');
+        } else {
+          router.push(found.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+        }
       }
       return { success: true };
     }
@@ -101,11 +105,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     setUser(finalProfile);
     mockDb.currentUser = finalProfile;
-    router.push(finalProfile.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+
+    if (finalProfile.role === 'FRONT_DESK') {
+      router.push('/walkthrough');
+    } else {
+      router.push(finalProfile.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+    }
     return true;
   };
 
-  const setUserRole = (role: 'ADMIN' | 'SALES') => {
+  const setUserRole = (role: UserRole) => {
     if (!user) return;
     mockDb.updateProfile(user.id, { role }).then((updated) => {
       if (updated) setUser(updated);

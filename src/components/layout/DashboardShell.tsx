@@ -56,7 +56,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
             <Building2 className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-sm font-bold text-white tracking-wide">LuxeEstate 3D</h1>
+            <h1 className="text-sm font-bold text-white tracking-wide">OnePlace</h1>
             <span className="text-[10px] text-sky-400 font-medium capitalize">{user.role} Portal</span>
           </div>
         </div>
@@ -82,7 +82,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <h1 className="text-base font-bold text-white tracking-tight">LuxeEstate 3D</h1>
+              <h1 className="text-base font-bold text-white tracking-tight">OnePlace</h1>
               <p className="text-[11px] text-slate-400 font-medium">Real Estate Showcase</p>
             </div>
           </div>

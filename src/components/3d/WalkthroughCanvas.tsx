@@ -16,9 +16,18 @@ interface WalkthroughCanvasProps {
   model?: Model3D | null;
   hotspots?: Hotspot[];
   readOnly?: boolean;
+  isFrontDesk?: boolean;
+  onOpenRegistration?: () => void;
+  idleCountdown?: number;
 }
 
-export function WalkthroughCanvas({ model: initialModel, hotspots: initialHotspots }: WalkthroughCanvasProps) {
+export function WalkthroughCanvas({ 
+  model: initialModel, 
+  hotspots: initialHotspots,
+  isFrontDesk,
+  onOpenRegistration,
+  idleCountdown
+}: WalkthroughCanvasProps) {
   const [model, setModel] = useState<Model3D | null>(initialModel || null);
   const [hotspots, setHotspots] = useState<Hotspot[]>(initialHotspots || []);
   const [activeHotspotId, setActiveHotspotId] = useState<string | null>(null);
@@ -159,6 +168,9 @@ export function WalkthroughCanvas({ model: initialModel, hotspots: initialHotspo
         hotspotsVisible={hotspotsVisible}
         onToggleHotspots={() => setHotspotsVisible(!hotspotsVisible)}
         onMobileMove={setMobileMoveVector}
+        isFrontDesk={isFrontDesk}
+        onOpenRegistration={onOpenRegistration}
+        idleCountdown={idleCountdown}
       />
     </div>
   );

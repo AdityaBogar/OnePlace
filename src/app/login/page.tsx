@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useAuth } from '@/lib/auth/context';
-import { Building2, Lock, Mail, ArrowRight, ShieldCheck, KeyRound } from 'lucide-react';
+import { Building2, Lock, Mail, ArrowRight, ShieldCheck, KeyRound, Monitor } from 'lucide-react';
 import Link from 'next/link';
 
 export default function LoginPage() {
@@ -37,7 +37,7 @@ export default function LoginPage() {
               <Building2 className="w-7 h-7" />
             </div>
           </Link>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight">LuxeEstate 3D Portal</h1>
+          <h1 className="text-2xl font-extrabold text-white tracking-tight">OnePlace Portal</h1>
           <p className="text-xs text-slate-400 mt-1">Sign in to access builder dashboards & 3D tour management</p>
         </div>
 
@@ -92,8 +92,8 @@ export default function LoginPage() {
 
           {/* Quick Evaluator Helper Buttons */}
           <div className="mt-8 pt-6 border-t border-slate-800 text-xs">
-            <span className="text-slate-400 font-semibold mb-2 block">Quick Evaluator Fill:</span>
-            <div className="grid grid-cols-2 gap-2">
+            <span className="text-slate-400 font-semibold mb-2 block">Quick Role Evaluator Fill:</span>
+            <div className="grid grid-cols-3 gap-2">
               <button
                 type="button"
                 onClick={() => {
@@ -102,10 +102,10 @@ export default function LoginPage() {
                 }}
                 className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-sky-500/50 text-left transition"
               >
-                <div className="text-sky-400 font-bold text-[11px] flex items-center gap-1">
-                  <ShieldCheck className="w-3 h-3" /> Fill Admin
+                <div className="text-sky-400 font-bold text-[10px] flex items-center gap-1">
+                  <ShieldCheck className="w-3 h-3" /> Admin
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5">admin@luxestate.com</div>
+                <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">admin@...</div>
               </button>
 
               <button
@@ -116,10 +116,24 @@ export default function LoginPage() {
                 }}
                 className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-sky-500/50 text-left transition"
               >
-                <div className="text-emerald-400 font-bold text-[11px] flex items-center gap-1">
-                  <KeyRound className="w-3 h-3" /> Fill Sales
+                <div className="text-emerald-400 font-bold text-[10px] flex items-center gap-1">
+                  <KeyRound className="w-3 h-3" /> Sales
                 </div>
-                <div className="text-[10px] text-slate-400 font-mono mt-0.5">sales@luxestate.com</div>
+                <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">sales@...</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setEmail('frontdesk@oneplace.com');
+                  setPassword('Pikashoot123!');
+                }}
+                className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 hover:border-purple-500/50 text-left transition"
+              >
+                <div className="text-purple-400 font-bold text-[10px] flex items-center gap-1">
+                  <Monitor className="w-3 h-3" /> Front Desk
+                </div>
+                <div className="text-[9px] text-slate-400 font-mono mt-0.5 truncate">frontdesk@...</div>
               </button>
             </div>
             <p className="text-[10px] text-slate-500 mt-2 text-center">Initial Temporary Password: <code className="text-slate-400">Pikashoot123!</code></p>

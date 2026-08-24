@@ -4,13 +4,11 @@ import {
   Compass, 
   Sparkles, 
   ArrowRight, 
-  CheckCircle2, 
-  ShieldCheck, 
-  ChevronRight, 
   Layers, 
   Smartphone, 
   Send,
-  Eye
+  Eye,
+  ChevronRight
 } from 'lucide-react';
 
 export default function HomePage() {
@@ -24,7 +22,7 @@ export default function HomePage() {
               <Building2 className="w-6 h-6" />
             </div>
             <div>
-              <span className="text-lg font-bold text-white tracking-tight">LuxeEstate<span className="text-sky-400">3D</span></span>
+              <span className="text-lg font-bold text-white tracking-tight">OnePlace</span>
               <p className="text-[10px] text-slate-400 font-medium uppercase tracking-wider">Spatial Property Showcase</p>
             </div>
           </Link>
@@ -69,7 +67,7 @@ export default function HomePage() {
           </h1>
 
           <p className="mt-6 text-base sm:text-xl text-slate-300 max-w-2xl mx-auto font-light leading-relaxed">
-            Transform architectural models into collision-aware, spatial 3D interactive experiences. Elevate luxury project sales with real-time room navigation, hotspot tours, and automated visitor follow-ups.
+            Transform architectural models into collision-aware, spatial 3D interactive experiences with OnePlace. Elevate luxury project sales with real-time room navigation, hotspot tours, and automated visitor follow-ups.
           </p>
 
           <div className="mt-10 flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -86,7 +84,7 @@ export default function HomePage() {
               href="/login"
               className="w-full sm:w-auto flex items-center justify-center gap-2 px-8 py-4 rounded-2xl bg-slate-900/90 hover:bg-slate-800 text-slate-200 hover:text-white font-semibold text-sm border border-slate-800 backdrop-blur-md transition"
             >
-              Sign In to Builder Portal
+              Sign In to OnePlace Portal
             </Link>
           </div>
 
@@ -119,8 +117,8 @@ export default function HomePage() {
       <section id="features" className="py-24 bg-slate-900/50 border-t border-slate-800/60">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center max-w-3xl mx-auto mb-16">
-            <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Engineered for Luxury Property Developers</h2>
-            <p className="text-sm text-slate-400 mt-4">Complete end-to-end platform bridging 3D visualization, admin asset management, and sales inquiry follow-ups.</p>
+            <h2 className="text-3xl sm:text-4xl font-extrabold text-white">Engineered for Visionary Developers</h2>
+            <p className="text-sm text-slate-400 mt-4">Complete end-to-end platform bridging 3D visualization, front desk kiosk registration, and automated sales follow-ups.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -150,7 +148,7 @@ export default function HomePage() {
               </div>
               <h3 className="text-lg font-bold text-white">Automated Inquiry Follow-up</h3>
               <p className="text-xs text-slate-400 mt-2 leading-relaxed">
-                Sales reps register visitors directly during tours. The background worker triggers 1-minute follow-ups via SendGrid Email and WhatsApp Business API.
+                Front desk and sales reps register visitors directly during tours. Instant follow-ups via SendGrid Email and WhatsApp API assign leads automatically.
               </p>
             </div>
           </div>
@@ -162,9 +160,9 @@ export default function HomePage() {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row items-center justify-between gap-6 text-xs text-slate-400">
           <div className="flex items-center gap-3">
             <Building2 className="w-5 h-5 text-sky-400" />
-            <span className="font-bold text-white">LuxeEstate 3D Showcase Platform</span>
+            <span className="font-bold text-white">OnePlace 3D Showcase Platform</span>
           </div>
-          <p>© 2026 LuxeEstate Inc. All rights reserved. Production 3D Real Estate SaaS.</p>
+          <p>© 2026 OnePlace Inc. All rights reserved.</p>
           <div className="flex items-center gap-6">
             <Link href="/login" className="hover:text-white transition">Admin Portal</Link>
             <Link href="/login" className="hover:text-white transition">Sales Portal</Link>

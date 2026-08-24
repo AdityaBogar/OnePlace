@@ -50,14 +50,14 @@ export class NotificationService {
 
     const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
     const optOutLink = `${appUrl}/opt-out?visitor=${visitor.id}`;
-    const salespersonName = detail.salesperson?.full_name || 'LuxeEstate Sales Team';
+    const salespersonName = detail.salesperson?.full_name || 'OnePlace Sales Team';
 
     // 1. Send Email Follow-Up
     const emailSubject = `Welcome to The Sky Villa — Your 3D Showcase Highlights`;
     const emailHtml = `
       <div style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 40px; border-radius: 12px; max-width: 600px; margin: 0 auto; border: 1px solid #1e293b;">
         <div style="text-align: center; margin-bottom: 30px;">
-          <h1 style="color: #38bdf8; font-size: 28px; letter-spacing: -0.5px; margin: 0;">LuxeEstate 3D</h1>
+          <h1 style="color: #38bdf8; font-size: 28px; letter-spacing: -0.5px; margin: 0;">OnePlace</h1>
           <p style="color: #94a3b8; font-size: 14px; text-transform: uppercase; letter-spacing: 2px; margin-top: 4px;">Exclusive Spatial Property Exploration</p>
         </div>
         
@@ -83,7 +83,7 @@ export class NotificationService {
         <hr style="border: 0; border-top: 1px solid #334155; margin: 30px 0;" />
 
         <div style="font-size: 12px; color: #64748b; text-align: center;">
-          <p>You received this email because you registered during your tour with LuxeEstate 3D Showcase.</p>
+          <p>You received this email because you registered during your tour with OnePlace 3D Showcase.</p>
           <p><a href="${optOutLink}" style="color: #94a3b8; text-decoration: underline;">Click here to opt out of future property updates</a></p>
         </div>
       </div>

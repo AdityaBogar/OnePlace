@@ -23,8 +23,8 @@ export async function sendEmailNotification(payload: EmailPayload): Promise<Noti
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
 
-  const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_FROM || 'sales@luxestate3d.com';
-  const fromName = process.env.SENDGRID_FROM_NAME || 'LuxeEstate 3D Showcase';
+  const fromEmail = process.env.SENDGRID_FROM_EMAIL || process.env.SMTP_FROM || 'sales@oneplace.com';
+  const fromName = process.env.SENDGRID_FROM_NAME || 'OnePlace 3D Showcase';
   const summary = `Email Subject: "${payload.subject}" to ${payload.to}`;
 
   // 1. Try Nodemailer SMTP if SMTP host/user is configured

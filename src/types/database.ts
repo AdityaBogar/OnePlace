@@ -1,4 +1,4 @@
-export type UserRole = 'ADMIN' | 'SALES';
+export type UserRole = 'ADMIN' | 'SALES' | 'FRONT_DESK';
 export type ModelStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED';
 export type InquiryStatus = 'NEW' | 'FOLLOW_UP_SCHEDULED' | 'FOLLOWED_UP' | 'CLOSED';
 export type CommChannel = 'EMAIL' | 'WHATSAPP';

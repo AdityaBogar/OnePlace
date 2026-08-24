@@ -30,6 +30,16 @@ export const INITIAL_PROFILES: Profile[] = [
     is_active: true,
     created_at: new Date(Date.now() - 10 * 86400000).toISOString(),
     updated_at: new Date().toISOString(),
+  },
+  {
+    id: 'user-frontdesk-01',
+    full_name: 'Front Desk Kiosk',
+    email: 'frontdesk@oneplace.com',
+    role: 'FRONT_DESK',
+    must_change_password: false,
+    is_active: true,
+    created_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+    updated_at: new Date().toISOString(),
   }
 ];
 

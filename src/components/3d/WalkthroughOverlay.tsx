@@ -29,6 +29,9 @@ interface WalkthroughOverlayProps {
   hotspotsVisible: boolean;
   onToggleHotspots: () => void;
   onMobileMove?: (vector: { x: number; y: number }) => void;
+  isFrontDesk?: boolean;
+  onOpenRegistration?: () => void;
+  idleCountdown?: number;
 }
 
 export function WalkthroughOverlay({
@@ -41,7 +44,10 @@ export function WalkthroughOverlay({
   onToggleFreeWalk,
   hotspotsVisible,
   onToggleHotspots,
-  onMobileMove
+  onMobileMove,
+  isFrontDesk,
+  onOpenRegistration,
+  idleCountdown
 }: WalkthroughOverlayProps) {
   const router = useRouter();
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -113,6 +119,15 @@ export function WalkthroughOverlay({
 
         {/* Right: Quick Tools */}
         <div className="flex items-center gap-2 pointer-events-auto">
+          {isFrontDesk && onOpenRegistration && (
+            <button
+              onClick={onOpenRegistration}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-xs font-bold shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-blue-500 transition border border-sky-400/40"
+            >
+              <span>Register New Visitor</span>
+            </button>
+          )}
+
           <button
             onClick={() => setShowHelp(true)}
             className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800 text-slate-300 hover:text-white text-xs font-medium backdrop-blur-md hover:border-sky-500/50 transition shadow-xl"

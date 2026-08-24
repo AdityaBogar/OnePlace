@@ -6,8 +6,8 @@ import { AuthProvider } from '@/lib/auth/context';
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' });
 
 export const metadata: Metadata = {
-  title: 'LuxeEstate 3D — Immersive Real Estate Spatial Showcase',
-  description: 'Interactive, collision-aware 3D property walkthrough platform for luxury real estate builders and sales teams.',
+  title: 'OnePlace — Immersive Real Estate Spatial Showcase',
+  description: 'Interactive, collision-aware 3D property walkthrough platform for real estate builders, sales teams, and front desk kiosks.',
 };
 
 export default function RootLayout({
