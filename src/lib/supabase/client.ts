@@ -310,7 +310,7 @@ class MockStore {
     return this.visitors;
   }
 
-  async registerVisitor(data: {
+  async registerVisitorAndInquiry(data: {
     salesperson_id: string;
     name: string;
     email: string;
@@ -327,6 +327,7 @@ class MockStore {
         phone: data.phone,
         inquiry_type: data.inquiry_type,
         notes: data.notes || null,
+        max_follow_ups: null,
       }]).select().single();
 
       if (!vErr && newVisitor) {
@@ -374,7 +375,7 @@ class MockStore {
       phone: data.phone,
       inquiry_type: data.inquiry_type,
       notes: data.notes || null,
-      max_follow_ups: 3,
+      max_follow_ups: null,
       follow_ups_sent: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

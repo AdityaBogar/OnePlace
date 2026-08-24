@@ -40,6 +40,8 @@ export default function VisitorDetailPage() {
 
   const loadDetail = useCallback(async () => {
     if (!visitorId) return;
+    setIsLoading(true);
+    setDetail(null);
     try {
       const res  = await fetch(`/api/visitors/${visitorId}`);
       const json = await res.json();
@@ -56,7 +58,7 @@ export default function VisitorDetailPage() {
         salesperson: json.salesperson,
       });
       setReplies(json.replies ?? []);
-      setLocalMaxFollowUps(json.visitor.max_follow_ups ?? 3);
+      setLocalMaxFollowUps(json.visitor.max_follow_ups ?? json.salesperson?.max_follow_ups ?? 3);
     } catch {
       setDetail(null);
     } finally {
@@ -92,6 +94,20 @@ export default function VisitorDetailPage() {
     await loadDetail();
     setIsSavingFollowUpCount(false);
     setSuccessMsg(`Follow-up limit updated to ${localMaxFollowUps} emails.`);
+    setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
+  const handleResetToGlobal = async () => {
+    if (!detail) return;
+    setIsSavingFollowUpCount(true);
+    await fetch(`/api/visitors/${visitorId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ max_follow_ups: null }),
+    });
+    await loadDetail();
+    setIsSavingFollowUpCount(false);
+    setSuccessMsg(`Follow-up limit reset to global default.`);
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
@@ -152,7 +168,7 @@ export default function VisitorDetailPage() {
 
   const { visitor, preference, logs, jobs, salesperson } = detail;
   const isOptedOut = preference.opted_out;
-  const maxFollowUps = visitor.max_follow_ups ?? 3;
+  const maxFollowUps = visitor.max_follow_ups ?? salesperson?.max_follow_ups ?? 3;
   const followUpsSent = visitor.follow_ups_sent ?? 0;
   const emailLogs = logs.filter(l => l.channel === 'EMAIL');
 
@@ -250,7 +266,14 @@ export default function VisitorDetailPage() {
 
           <div className="space-y-3">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-slate-400">Number of follow-up emails to send this lead:</span>
+              <span className="text-slate-400 flex items-center gap-2">
+                Number of follow-up emails to send this lead:
+                {visitor.max_follow_ups === null && (
+                  <span className="px-2.5 py-0.5 rounded-full bg-slate-800 border border-slate-700/50 text-slate-400 text-[10px] font-bold">
+                    Inherited global default ({salesperson?.max_follow_ups ?? 3})
+                  </span>
+                )}
+              </span>
               <span className="font-bold text-white text-base w-8 text-center">{localMaxFollowUps}</span>
             </div>
             <input
@@ -267,21 +290,31 @@ export default function VisitorDetailPage() {
                 <span key={n} className={n === localMaxFollowUps ? 'text-sky-400 font-bold' : ''}>{n}</span>
               ))}
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between pt-2">
               <p className="text-[11px] text-slate-500">
-                {followUpsSent} sent so far · {Math.max(0, localMaxFollowUps - followUpsSent)} remaining after save
+                {followUpsSent} sent so far · {Math.max(0, localMaxFollowUps - followUpsSent)} remaining
                 {localMaxFollowUps <= followUpsSent && (
-                  <span className="ml-2 text-amber-400 font-semibold">⚠ Already at or above limit — no more will be sent</span>
+                  <span className="ml-2 text-amber-400 font-semibold">⚠ Already at or above limit</span>
                 )}
               </p>
-              <button
-                onClick={handleSaveFollowUpCount}
-                disabled={isSavingFollowUpCount || localMaxFollowUps === maxFollowUps}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white text-xs font-bold border border-sky-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isSavingFollowUpCount ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
-                {localMaxFollowUps === maxFollowUps ? 'Saved' : 'Save Limit'}
-              </button>
+              <div className="flex gap-2">
+                {visitor.max_follow_ups !== null && (
+                  <button
+                    onClick={handleResetToGlobal}
+                    disabled={isSavingFollowUpCount}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 transition disabled:opacity-40"
+                  >
+                    Reset to Global
+                  </button>
+                )}
+                <button
+                  onClick={handleSaveFollowUpCount}
+                  disabled={isSavingFollowUpCount || localMaxFollowUps === visitor.max_follow_ups}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-sky-500/20 hover:bg-sky-500 text-sky-400 hover:text-white text-xs font-bold border border-sky-500/40 transition disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isSavingFollowUpCount ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : 'Save Limit'}
+                </button>
+              </div>
             </div>
           </div>
         </div>

@@ -154,7 +154,7 @@ export class NotificationService {
 
     const visitor: Visitor = detail.visitor;
     const isOptedOut = detail.preference.opted_out;
-    const maxFollowUps = visitor.max_follow_ups ?? 3;
+    const maxFollowUps = visitor.max_follow_ups ?? detail.salesperson?.max_follow_ups ?? 3;
     const followUpsSent = visitor.follow_ups_sent ?? 0;
 
     // Check opt-out

@@ -12,11 +12,12 @@ export interface Profile {
   role: UserRole;
   must_change_password: boolean;
   is_active: boolean;
+  max_follow_ups?: number;
   created_at: string;
   updated_at: string;
 }
 
-export interface Model3D {
+export type Model3D = {
   id: string;
   title: string;
   description: string | null;
@@ -55,7 +56,7 @@ export interface Visitor {
   phone: string;
   inquiry_type: string;
   notes: string | null;
-  max_follow_ups: number;     // 1–10, default 3
+  max_follow_ups: number | null;     // null means use salesperson's global default
   follow_ups_sent: number;   // tracks how many have been sent
   created_at: string;
   updated_at: string;

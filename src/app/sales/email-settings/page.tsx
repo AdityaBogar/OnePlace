@@ -98,6 +98,8 @@ export default function EmailSettingsPage() {
   const { user } = useAuth();
 
   const [maxFollowUps, setMaxFollowUps] = useState(3);
+  const [savedMaxFollowUps, setSavedMaxFollowUps] = useState(3);
+  const [isSavingLimit, setIsSavingLimit] = useState(false);
   const [activeTab, setActiveTab] = useState(1);
   const [templates, setTemplates] = useState<Record<number, { subject: string; body: string; saved: boolean }>>({});
   const [isLoading, setIsLoading] = useState(true);
@@ -141,6 +143,10 @@ export default function EmailSettingsPage() {
           }
         }
         setTemplates(loaded);
+        if (json.maxFollowUps !== undefined) {
+          setMaxFollowUps(json.maxFollowUps);
+          setSavedMaxFollowUps(json.maxFollowUps);
+        }
       } catch (e: unknown) {
         setErrorMsg(e instanceof Error ? e.message : 'Failed to load templates.');
         console.error('Failed to load templates:', e);
@@ -184,6 +190,29 @@ export default function EmailSettingsPage() {
       throw new Error(json.error ?? `HTTP ${res.status}`);
     }
     return true;
+  };
+
+  const handleSaveLimit = async () => {
+    setIsSavingLimit(true);
+    setErrorMsg('');
+    try {
+      const salespersonId = await getSalespersonId();
+      const res = await fetch('/api/email-templates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ salespersonId, maxFollowUps }),
+      });
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        throw new Error(json.error ?? `HTTP ${res.status}`);
+      }
+      setSavedMaxFollowUps(maxFollowUps);
+      setSavedAt(new Date());
+    } catch (e: unknown) {
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+    } finally {
+      setIsSavingLimit(false);
+    }
   };
 
   const handleSave = async () => {
@@ -282,7 +311,17 @@ export default function EmailSettingsPage() {
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">Each is sent 1 minute after the last. Maximum 10.</p>
             </div>
-            <span className="text-3xl font-extrabold text-white">{maxFollowUps}</span>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl font-extrabold text-white">{maxFollowUps}</span>
+              <button
+                onClick={handleSaveLimit}
+                disabled={isSavingLimit || maxFollowUps === savedMaxFollowUps}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-sky-500/20 hover:bg-sky-500 disabled:opacity-40 disabled:bg-slate-800 text-sky-400 hover:text-white disabled:text-slate-500 text-xs font-bold border border-sky-500/30 disabled:border-slate-800 transition shadow-lg shadow-sky-500/5 cursor-pointer disabled:cursor-not-allowed"
+              >
+                {isSavingLimit ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                Save Limit
+              </button>
+            </div>
           </div>
           <input
             type="range" min={1} max={10} value={maxFollowUps}

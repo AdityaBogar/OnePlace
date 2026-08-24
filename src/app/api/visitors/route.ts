@@ -60,6 +60,7 @@ export async function POST(req: NextRequest) {
       phone,
       inquiry_type: inquiry_type || 'General 3D Tour Inquiry',
       notes: notes || null,
+      max_follow_ups: null,
     }])
     .select()
     .single();

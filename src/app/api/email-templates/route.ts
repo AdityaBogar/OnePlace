@@ -29,19 +29,53 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data });
+  // Load salesperson's global max_follow_ups
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('max_follow_ups')
+    .eq('id', salespersonId)
+    .maybeSingle();
+
+  return NextResponse.json({
+    data,
+    maxFollowUps: profile?.max_follow_ups ?? 3
+  });
 }
 
 /**
  * POST /api/email-templates
- * Upserts an email template for a salesperson + follow-up number.
- * Body: { salespersonId, followUpNumber, subject, bodyText }
+ * Upserts an email template for a salesperson + follow-up number,
+ * OR updates their global maxFollowUps count.
+ * Body: { salespersonId, maxFollowUps } OR { salespersonId, followUpNumber, subject, bodyText }
  */
 export async function POST(req: NextRequest) {
   const body = await req.json();
-  const { salespersonId, followUpNumber, subject, bodyText } = body;
+  const { salespersonId, followUpNumber, subject, bodyText, maxFollowUps } = body;
 
-  if (!salespersonId || !followUpNumber || !subject || bodyText === undefined) {
+  if (!salespersonId) {
+    return NextResponse.json({ error: 'salespersonId is required' }, { status: 400 });
+  }
+
+  // Case 1: Update salesperson's global max_follow_ups setting
+  if (maxFollowUps !== undefined) {
+    const { error } = await supabase
+      .from('profiles')
+      .update({
+        max_follow_ups: maxFollowUps,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', salespersonId);
+
+    if (error) {
+      console.error('POST email-templates max_follow_ups update error:', error.message);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true, maxFollowUps });
+  }
+
+  // Case 2: Upsert email template
+  if (!followUpNumber || !subject || bodyText === undefined) {
     return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
   }
 

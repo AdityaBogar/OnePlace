@@ -49,52 +49,6 @@ async function processPendingJobs() {
         })
         .eq('id', job.id);
 
-      // If successful and visitor has more follow-ups remaining, schedule the next one
-      if (isSuccess) {
-        const { data: visitor } = await supabase
-          .from('visitors')
-          .select('max_follow_ups, follow_ups_sent, salesperson_id')
-          .eq('id', job.visitor_id)
-          .single();
-
-        if (visitor) {
-          const newFollowUpsSent = (visitor.follow_ups_sent ?? 0) + 1;
-
-          // Resolve max_follow_ups: use visitor's custom value if set, else salesperson's global setting
-          let maxFollowUps = visitor.max_follow_ups ?? 3;
-          if (!visitor.max_follow_ups) {
-            // Try to get salesperson's global max from email_templates
-            const { data: template } = await supabase
-              .from('email_templates')
-              .select('follow_up_number')
-              .eq('salesperson_id', visitor.salesperson_id)
-              .order('follow_up_number', { ascending: false })
-              .limit(1)
-              .maybeSingle();
-            if (template?.follow_up_number) maxFollowUps = template.follow_up_number;
-          }
-
-          // Update follow_ups_sent counter on visitor
-          await supabase
-            .from('visitors')
-            .update({ follow_ups_sent: newFollowUpsSent, updated_at: new Date().toISOString() })
-            .eq('id', job.visitor_id);
-
-          // Schedule next follow-up if still within limit
-          const nextNumber = followUpNumber + 1;
-          if (nextNumber <= maxFollowUps) {
-            const nextScheduled = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(); // 24h later
-            await supabase.from('follow_up_jobs').insert([{
-              visitor_id: job.visitor_id,
-              scheduled_for: nextScheduled,
-              status: 'PENDING',
-              attempts: 0,
-              follow_up_number: nextNumber,
-            }]);
-          }
-        }
-      }
-
       processed.push({ jobId: job.id, followUpNumber, success: isSuccess });
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);

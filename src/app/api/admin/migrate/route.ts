@@ -44,6 +44,10 @@ export async function POST() {
   const hasMaxFollowUps = await columnExists('visitors', 'max_follow_ups');
   results.push({ step: 'visitors.max_follow_ups column', ok: hasMaxFollowUps, error: hasMaxFollowUps ? undefined : 'Needs ALTER TABLE' });
 
+  // ── Step 4: Check profiles.max_follow_ups ──
+  const hasProfileMaxFollowUps = await columnExists('profiles', 'max_follow_ups');
+  results.push({ step: 'profiles.max_follow_ups column', ok: hasProfileMaxFollowUps, error: hasProfileMaxFollowUps ? undefined : 'Needs ALTER TABLE' });
+
   return NextResponse.json({
     success: true,
     results,
@@ -103,13 +107,22 @@ END $$;
 
 -- 3. Add follow-up control columns to visitors
 ALTER TABLE public.visitors
-  ADD COLUMN IF NOT EXISTS max_follow_ups INTEGER NOT NULL DEFAULT 3
+  ADD COLUMN IF NOT EXISTS max_follow_ups INTEGER DEFAULT NULL
     CHECK (max_follow_ups BETWEEN 1 AND 10),
   ADD COLUMN IF NOT EXISTS follow_ups_sent INTEGER NOT NULL DEFAULT 0;
+
+-- Drop NOT NULL constraint on max_follow_ups if present
+ALTER TABLE public.visitors ALTER COLUMN max_follow_ups DROP NOT NULL;
+ALTER TABLE public.visitors ALTER COLUMN max_follow_ups SET DEFAULT NULL;
 
 -- 4. Add follow_up_number to track which sequential follow-up a job represents
 ALTER TABLE public.follow_up_jobs
   ADD COLUMN IF NOT EXISTS follow_up_number INTEGER NOT NULL DEFAULT 1;
+
+-- 5. Add max_follow_ups to profiles table for salesperson global defaults
+ALTER TABLE public.profiles
+  ADD COLUMN IF NOT EXISTS max_follow_ups INTEGER NOT NULL DEFAULT 3
+    CHECK (max_follow_ups BETWEEN 1 AND 10);
 
 -- Done!
 SELECT 'Migration complete' AS result;
