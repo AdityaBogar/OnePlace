@@ -2,13 +2,12 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { mockDb } from '@/lib/supabase/client';
 import { Visitor, CommunicationLog, CommunicationPreference, Profile, FollowUpJob, EmailReply } from '@/types/database';
 import { useAuth } from '@/lib/auth/context';
 import {
   ArrowLeft, Mail, Phone, MessageSquare, ShieldCheck, ShieldOff,
   Clock, CheckCircle2, XCircle, RefreshCw, Send, User, Calendar,
-  AlertCircle, Info, Zap, FileText, Reply, ChevronRight, Settings2,
+  AlertCircle, Info, Zap, FileText, Reply, Settings2,
   Hash
 } from 'lucide-react';
 import { useRouter, useParams } from 'next/navigation';
@@ -36,37 +35,60 @@ export default function VisitorDetailPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [localMaxFollowUps, setLocalMaxFollowUps] = useState<number>(3);
 
+  // Suppress unused warning — user is available for future permission checks
+  void user;
+
   const loadDetail = useCallback(async () => {
     if (!visitorId) return;
-    const data = await mockDb.getVisitorDetail(visitorId);
-    if (data) {
-      setDetail(data as VisitorDetail);
-      setLocalMaxFollowUps(data.visitor.max_follow_ups ?? 3);
+    try {
+      const res  = await fetch(`/api/visitors/${visitorId}`);
+      const json = await res.json();
+      if (!res.ok || !json.visitor) {
+        setDetail(null);
+        setIsLoading(false);
+        return;
+      }
+      setDetail({
+        visitor:     json.visitor,
+        preference:  json.preference,
+        logs:        json.logs   ?? [],
+        jobs:        json.jobs   ?? [],
+        salesperson: json.salesperson,
+      });
+      setReplies(json.replies ?? []);
+      setLocalMaxFollowUps(json.visitor.max_follow_ups ?? 3);
+    } catch {
+      setDetail(null);
+    } finally {
+      setIsLoading(false);
     }
-    // Load email replies
-    const emailReplies = await mockDb.getEmailReplies(visitorId);
-    setReplies(emailReplies);
-    setIsLoading(false);
   }, [visitorId]);
 
-  useEffect(() => {
-    loadDetail();
-  }, [loadDetail]);
+  useEffect(() => { loadDetail(); }, [loadDetail]);
 
   const handleToggleConsent = async () => {
     if (!detail) return;
     setIsTogglingConsent(true);
-    await mockDb.toggleOptOut(detail.visitor.id, !detail.preference.opted_out);
+    const newOptOut = !detail.preference.opted_out;
+    await fetch(`/api/visitors/${visitorId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ opted_out: newOptOut }),
+    });
     await loadDetail();
     setIsTogglingConsent(false);
-    setSuccessMsg(`Consent updated to ${detail.preference.opted_out ? 'Subscribed' : 'Opted Out'}`);
+    setSuccessMsg(`Consent updated to ${newOptOut ? 'Opted Out' : 'Subscribed'}`);
     setTimeout(() => setSuccessMsg(''), 3000);
   };
 
   const handleSaveFollowUpCount = async () => {
     if (!detail) return;
     setIsSavingFollowUpCount(true);
-    await mockDb.updateVisitorFollowUpCount(detail.visitor.id, localMaxFollowUps);
+    await fetch(`/api/visitors/${visitorId}`, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ max_follow_ups: localMaxFollowUps }),
+    });
     await loadDetail();
     setIsSavingFollowUpCount(false);
     setSuccessMsg(`Follow-up limit updated to ${localMaxFollowUps} emails.`);
@@ -76,7 +98,7 @@ export default function VisitorDetailPage() {
   const handleRunWorker = async () => {
     setIsRunningWorker(true);
     try {
-      const res = await fetch('/api/jobs/process', { method: 'POST' });
+      const res  = await fetch('/api/jobs/process', { method: 'POST' });
       const data = await res.json();
       await loadDetail();
       setSuccessMsg(`Follow-up worker ran — ${data.processed || 0} job(s) processed.`);
@@ -87,6 +109,8 @@ export default function VisitorDetailPage() {
       setIsRunningWorker(false);
     }
   };
+
+
 
   const logStatusColor = (status: string) => {
     if (status === 'SENT' || status === 'MOCK_SENT') return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30';
