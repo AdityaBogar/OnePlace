@@ -2,8 +2,7 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
-import { mockDb } from '@/lib/supabase/client';
-import { EmailTemplate } from '@/types/database';
+
 import { useAuth } from '@/lib/auth/context';
 import {
   Mail, Save, RefreshCw, CheckCircle2, AlertCircle, ChevronRight,
@@ -123,18 +122,24 @@ export default function EmailSettingsPage() {
       const salespersonId = await getSalespersonId();
       if (!salespersonId) { setIsLoading(false); return; }
 
-      const existing = await mockDb.getAllEmailTemplates(salespersonId);
-      const loaded: Record<number, { subject: string; body: string; saved: boolean }> = {};
-      for (const t of existing) {
-        loaded[t.follow_up_number] = { subject: t.subject, body: t.body_text, saved: true };
-      }
-      // Fill in defaults for any un-saved follow-up slots
-      for (let i = 1; i <= 10; i++) {
-        if (!loaded[i]) {
-          loaded[i] = { subject: DEFAULT_SUBJECTS[i] ?? `Follow-up #${i} from OnePlace`, body: DEFAULT_BODIES[i] ?? DEFAULT_BODIES[5], saved: false };
+      try {
+        const res = await fetch(`/api/email-templates?salespersonId=${encodeURIComponent(salespersonId)}`);
+        const json = await res.json();
+        const existing: { follow_up_number: number; subject: string; body_text: string }[] = json.data ?? [];
+        const loaded: Record<number, { subject: string; body: string; saved: boolean }> = {};
+        for (const t of existing) {
+          loaded[t.follow_up_number] = { subject: t.subject, body: t.body_text, saved: true };
         }
+        // Fill in defaults for any un-saved follow-up slots
+        for (let i = 1; i <= 10; i++) {
+          if (!loaded[i]) {
+            loaded[i] = { subject: DEFAULT_SUBJECTS[i] ?? `Follow-up #${i} from OnePlace`, body: DEFAULT_BODIES[i] ?? DEFAULT_BODIES[5], saved: false };
+          }
+        }
+        setTemplates(loaded);
+      } catch (e) {
+        console.error('Failed to load templates:', e);
       }
-      setTemplates(loaded);
       setIsLoading(false);
     };
     load();
@@ -162,6 +167,19 @@ export default function EmailSettingsPage() {
     }, 0);
   };
 
+  const saveTemplate = async (salespersonId: string, followUpNumber: number, subject: string, bodyText: string): Promise<boolean> => {
+    const res = await fetch('/api/email-templates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ salespersonId, followUpNumber, subject, bodyText }),
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => ({}));
+      throw new Error(json.error ?? `HTTP ${res.status}`);
+    }
+    return true;
+  };
+
   const handleSave = async () => {
     const t = currentTemplate;
     if (!t.subject.trim() || !t.body.trim()) { setErrorMsg('Subject and message body cannot be empty.'); return; }
@@ -169,13 +187,9 @@ export default function EmailSettingsPage() {
     setErrorMsg('');
     try {
       const salespersonId = await getSalespersonId();
-      const result = await mockDb.saveEmailTemplate(salespersonId, activeTab, t.subject, t.body);
-      if (result) {
-        setTemplates(prev => ({ ...prev, [activeTab]: { ...prev[activeTab], saved: true } }));
-        setSavedAt(new Date());
-      } else {
-        setErrorMsg('Could not save — the database table may not exist yet. Please run the Supabase migration first (GET /api/admin/migrate for the SQL).');
-      }
+      await saveTemplate(salespersonId, activeTab, t.subject, t.body);
+      setTemplates(prev => ({ ...prev, [activeTab]: { ...prev[activeTab], saved: true } }));
+      setSavedAt(new Date());
     } catch (e: unknown) {
       setErrorMsg(e instanceof Error ? e.message : String(e));
     } finally {
@@ -186,18 +200,24 @@ export default function EmailSettingsPage() {
   const handleSaveAll = async () => {
     setIsSaving(true);
     setErrorMsg('');
-    const salespersonId = await getSalespersonId();
-    let anyError = false;
-    for (let i = 1; i <= maxFollowUps; i++) {
-      const t = templates[i];
-      if (!t) continue;
-      const result = await mockDb.saveEmailTemplate(salespersonId, i, t.subject, t.body);
-      if (!result) anyError = true;
-      else setTemplates(prev => ({ ...prev, [i]: { ...prev[i], saved: true } }));
+    try {
+      const salespersonId = await getSalespersonId();
+      let anyError = false;
+      for (let i = 1; i <= maxFollowUps; i++) {
+        const t = templates[i];
+        if (!t) continue;
+        try {
+          await saveTemplate(salespersonId, i, t.subject, t.body);
+          setTemplates(prev => ({ ...prev, [i]: { ...prev[i], saved: true } }));
+        } catch {
+          anyError = true;
+        }
+      }
+      if (anyError) setErrorMsg('Some templates could not be saved.');
+      else setSavedAt(new Date());
+    } finally {
+      setIsSaving(false);
     }
-    if (anyError) setErrorMsg('Some templates could not be saved. Run the Supabase migration if needed.');
-    else setSavedAt(new Date());
-    setIsSaving(false);
   };
 
   if (isLoading) {
