@@ -127,9 +127,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
 
-
-
-
+        {/* Bottom Actions */}
+        <div className="p-4 border-t border-slate-800/80">
           <button
             onClick={logout}
             className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-slate-800/80 hover:bg-red-500/20 text-slate-300 hover:text-red-400 text-xs font-semibold border border-slate-700/60 transition"
