@@ -124,6 +124,9 @@ ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS max_follow_ups INTEGER NOT NULL DEFAULT 3
     CHECK (max_follow_ups BETWEEN 1 AND 10);
 
+-- 6. Reload schema cache for PostgREST
+NOTIFY pgrst, 'reload schema';
+
 -- Done!
 SELECT 'Migration complete' AS result;
   `.trim();
