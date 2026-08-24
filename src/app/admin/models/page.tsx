@@ -23,12 +23,21 @@ export default function AdminModelsPage() {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      if (!file.name.endsWith('.glb') && !file.name.endsWith('.gltf')) {
+      if (!file.name.toLowerCase().endsWith('.glb') && !file.name.toLowerCase().endsWith('.gltf')) {
         alert('Please select a 3D model file in .glb or .gltf format.');
         return;
       }
       setSelectedFile(file);
     }
+  };
+
+  const readFileAsDataUrl = (file: File): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   const handleUploadSubmit = async (e: React.FormEvent) => {
@@ -38,31 +47,27 @@ export default function AdminModelsPage() {
     setIsUploading(true);
     setUploadProgress(20);
 
-    // Simulate chunked upload progress
-    const timer = setInterval(() => {
-      setUploadProgress((prev) => {
-        if (prev >= 90) {
-          clearInterval(timer);
-          return 95;
-        }
-        return prev + 25;
-      });
-    }, 200);
+    try {
+      let filePath = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Sponza/glTF-Binary/Sponza.glb';
 
-    setTimeout(async () => {
-      clearInterval(timer);
-      setUploadProgress(100);
+      if (selectedFile) {
+        setUploadProgress(60);
+        filePath = await readFileAsDataUrl(selectedFile);
+      }
 
-      const filePath = selectedFile ? `/models/${selectedFile.name}` : '/models/sample_villa.glb';
+      setUploadProgress(90);
+
       const newModel = await mockDb.addModel({
         title,
         description: description || null,
         file_path: filePath,
         file_size_bytes: selectedFile ? selectedFile.size : 8500000,
-        is_active: false,
-        status: 'DRAFT',
+        is_active: true,
+        status: 'PUBLISHED',
         created_by: 'user-admin-01',
       });
+
+      await mockDb.setActiveModel(newModel.id);
 
       const updatedList = await mockDb.getModels();
       setModels(updatedList);
@@ -71,10 +76,15 @@ export default function AdminModelsPage() {
       setTitle('');
       setDescription('');
       setSelectedFile(null);
-      setSuccessMsg('3D Model uploaded successfully to draft repository.');
+      setSuccessMsg('3D Model uploaded successfully and set as active live walkthrough model!');
 
       setTimeout(() => setSuccessMsg(''), 4000);
-    }, 1200);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      alert('Failed to process 3D model: ' + errorMsg);
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleSetActive = async (id: string) => {
@@ -84,7 +94,7 @@ export default function AdminModelsPage() {
   };
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to archive and remove this 3D model?')) {
+    if (confirm('Are you sure you want to remove this 3D model?')) {
       await mockDb.deleteModel(id);
       const updatedList = await mockDb.getModels();
       setModels(updatedList);
@@ -159,7 +169,7 @@ export default function AdminModelsPage() {
               {isUploading && (
                 <div className="space-y-1">
                   <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                    <span>Uploading & Optimizing Geometry...</span>
+                    <span>Uploading & Processing 3D Geometry...</span>
                     <span>{uploadProgress}%</span>
                   </div>
                   <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden">
@@ -214,7 +224,7 @@ export default function AdminModelsPage() {
                       </div>
                       <p className="text-xs text-slate-400 mt-1 leading-relaxed">{m.description}</p>
                       <div className="flex items-center gap-4 text-[10px] text-slate-500 font-mono mt-2">
-                        <span>Path: {m.file_path}</span>
+                        <span className="truncate max-w-xs">Path: {m.file_path.startsWith('data:') ? 'Embedded Base64 GLB Data' : m.file_path}</span>
                         <span>Size: {Math.round((m.file_size_bytes || 0) / 1024 / 1024 * 10) / 10} MB</span>
                       </div>
                     </div>

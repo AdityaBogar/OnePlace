@@ -9,8 +9,29 @@ interface BuildingModelProps {
   onLoaded?: () => void;
 }
 
+class GlbErrorBoundary extends React.Component<
+  { children: React.ReactNode; fallback: React.ReactNode },
+  { hasError: boolean }
+> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: any) {
+    console.error('Error loading custom GLB 3D model:', error);
+  }
+  render() {
+    if (this.state.hasError) {
+      return this.props.fallback;
+    }
+    return this.props.children;
+  }
+}
+
 export function BuildingModel({ url, onLoaded }: BuildingModelProps) {
-  // Use CustomGlbModel when an actual uploaded HTTP/blob GLB URL is provided
   const isCustomGlb = Boolean(
     url && (url.startsWith('http://') || url.startsWith('https://') || url.startsWith('blob:') || url.startsWith('data:'))
   );
@@ -18,7 +39,9 @@ export function BuildingModel({ url, onLoaded }: BuildingModelProps) {
   return (
     <group name="building-structure">
       {isCustomGlb && url ? (
-        <CustomGlbModel url={url} onLoaded={onLoaded} />
+        <GlbErrorBoundary fallback={<ProceduralLuxuryVilla onLoaded={onLoaded} />}>
+          <CustomGlbModel url={url} onLoaded={onLoaded} />
+        </GlbErrorBoundary>
       ) : (
         <ProceduralLuxuryVilla onLoaded={onLoaded} />
       )}
