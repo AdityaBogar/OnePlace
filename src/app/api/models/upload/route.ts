@@ -1,82 +1,56 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 
-// Server-side route using service role key to bypass storage RLS
+// Server-side Supabase client with service role to create signed upload URLs
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 );
-// Tell Next.js this route handler accepts large request bodies (multipart form data)
-export const maxDuration = 300; // 5 min timeout for large uploads
 
+export const maxDuration = 60;
+
+/**
+ * POST /api/models/upload
+ * Generates a signed upload URL for direct browser → Supabase Storage upload.
+ * This avoids sending the large binary file through Next.js server (which has body limits).
+ * 
+ * Body: JSON { filename: string, title: string, description?: string }
+ * Returns: { uploadUrl, token, publicUrl, path }
+ */
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    const title = formData.get('title') as string;
-    const description = formData.get('description') as string;
+    const body = await req.json();
+    const { filename, title, description } = body;
 
-    if (!title) {
-      return NextResponse.json({ success: false, error: 'Title is required' }, { status: 400 });
+    if (!filename || !title) {
+      return NextResponse.json({ success: false, error: 'filename and title are required' }, { status: 400 });
     }
 
-    let filePath: string;
-    let fileSizeBytes = 0;
+    // Create unique safe path in storage bucket
+    const safeName = `${Date.now()}_${filename.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
 
-    if (file && file.size > 0) {
-      // Upload to Supabase Storage
-      const safeName = `${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g, '_')}`;
-      const arrayBuffer = await file.arrayBuffer();
-      const fileBuffer = new Uint8Array(arrayBuffer);
-      fileSizeBytes = file.size;
+    // Create a signed URL that allows the browser to upload directly to Supabase Storage
+    const { data: signedData, error: signedError } = await supabase.storage
+      .from('models-glb')
+      .createSignedUploadUrl(safeName);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from('models-glb')
-        .upload(safeName, fileBuffer, {
-          contentType: file.type || 'model/gltf-binary',
-          upsert: true,
-        });
-
-      if (uploadError) {
-        console.error('Supabase storage upload error:', uploadError);
-        return NextResponse.json({ success: false, error: `Storage upload failed: ${uploadError.message}` }, { status: 500 });
-      }
-
-      // Get permanent public URL
-      const { data: urlData } = supabase.storage.from('models-glb').getPublicUrl(safeName);
-      filePath = urlData.publicUrl;
-    } else {
-      // No file — use placeholder URL
-      filePath = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Sponza/glTF-Binary/Sponza.glb';
-      fileSizeBytes = 34200000;
+    if (signedError || !signedData) {
+      console.error('Signed URL error:', signedError);
+      return NextResponse.json({ success: false, error: signedError?.message || 'Failed to create signed URL' }, { status: 500 });
     }
 
-    // Deactivate all existing models
-    await supabase.from('models').update({ is_active: false }).neq('id', '00000000-0000-0000-0000-000000000000');
+    // Get the public URL that will be accessible after upload
+    const { data: urlData } = supabase.storage.from('models-glb').getPublicUrl(safeName);
 
-    // Get current user (admin)
-    const { data: adminUser } = await supabase.from('profiles').select('id').eq('role', 'ADMIN').limit(1).single();
-
-    // Insert new model record
-    const { data: newModel, error: insertError } = await supabase.from('models').insert([{
-      title,
-      description: description || null,
-      file_path: filePath,
-      file_size_bytes: fileSizeBytes,
-      is_active: true,
-      status: 'PUBLISHED',
-      created_by: adminUser?.id || null,
-    }]).select().single();
-
-    if (insertError) {
-      console.error('Model insert error:', insertError);
-      return NextResponse.json({ success: false, error: `DB insert failed: ${insertError.message}` }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true, model: newModel, filePath });
+    return NextResponse.json({
+      success: true,
+      uploadUrl: signedData.signedUrl,
+      token: signedData.token,
+      publicUrl: urlData.publicUrl,
+      path: safeName,
+    });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
-    console.error('Upload API error:', msg);
     return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }

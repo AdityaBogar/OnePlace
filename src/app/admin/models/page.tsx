@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { mockDb } from '@/lib/supabase/client';
+import { getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { Model3D } from '@/types/database';
 import {
-  Box, Upload, CheckCircle2, Trash2, Eye, FileUp, Sparkles, Check, AlertCircle, RefreshCw
+  Box, Upload, CheckCircle2, Trash2, Eye, FileUp, Sparkles, Check, AlertCircle, RefreshCw, CloudUpload
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -15,6 +16,7 @@ export default function AdminModelsPage() {
   const [description, setDescription] = useState('');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadPhase, setUploadPhase] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
@@ -39,10 +41,6 @@ export default function AdminModelsPage() {
         setErrorMsg('Please select a 3D model file in .glb or .gltf format.');
         return;
       }
-      if (file.size > 157286400) { // 150MB
-        setErrorMsg('File is too large. Maximum allowed size is 150MB.');
-        return;
-      }
       setErrorMsg('');
       setSelectedFile(file);
     }
@@ -65,54 +63,99 @@ export default function AdminModelsPage() {
     if (!title) return;
 
     setIsUploading(true);
-    setUploadProgress(10);
     setErrorMsg('');
     setSuccessMsg('');
 
     try {
-      const form = new FormData();
-      form.append('title', title);
-      form.append('description', description);
+      let publicUrl: string;
+      let fileSizeBytes = 0;
+
       if (selectedFile) {
-        form.append('file', selectedFile);
+        // ── STEP 1: Get a signed upload URL from our API ──
+        setUploadPhase('Getting secure upload URL...');
+        setUploadProgress(10);
+
+        const signRes = await fetch('/api/models/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ filename: selectedFile.name, title }),
+        });
+        const signData = await signRes.json();
+
+        if (!signRes.ok || !signData.success) {
+          throw new Error(signData.error || 'Failed to get upload URL');
+        }
+
+        setUploadProgress(20);
+
+        // ── STEP 2: Upload file DIRECTLY from browser → Supabase Storage ──
+        // This bypasses Next.js entirely, no body size limit!
+        setUploadPhase(`Uploading "${selectedFile.name}" to cloud storage...`);
+
+        const supabaseBrowser = getSupabaseBrowserClient();
+        if (!supabaseBrowser) throw new Error('Supabase client not configured');
+
+        const { error: uploadError } = await supabaseBrowser.storage
+          .from('models-glb')
+          .uploadToSignedUrl(signData.path, signData.token, selectedFile, {
+            contentType: selectedFile.type || 'model/gltf-binary',
+            upsert: true,
+          });
+
+        if (uploadError) {
+          throw new Error(`Storage upload failed: ${uploadError.message}`);
+        }
+
+        setUploadProgress(85);
+        publicUrl = signData.publicUrl;
+        fileSizeBytes = selectedFile.size;
+
+      } else {
+        // No file — use placeholder Sponza sample scene
+        setUploadPhase('Using sample 3D scene...');
+        setUploadProgress(50);
+        publicUrl = 'https://raw.githubusercontent.com/KhronosGroup/glTF-Sample-Models/main/2.0/Sponza/glTF-Binary/Sponza.glb';
+        fileSizeBytes = 34200000;
       }
 
-      setUploadProgress(30);
+      // ── STEP 3: Register model URL in the database ──
+      setUploadPhase('Saving model to database...');
+      setUploadProgress(92);
 
-      const res = await fetch('/api/models/upload', {
+      const regRes = await fetch('/api/models/register', {
         method: 'POST',
-        body: form,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, description, publicUrl, fileSizeBytes }),
       });
+      const regData = await regRes.json();
 
-      setUploadProgress(85);
-
-      const data = await res.json();
-
-      if (!res.ok || !data.success) {
-        throw new Error(data.error || 'Upload failed');
+      if (!regRes.ok || !regData.success) {
+        throw new Error(regData.error || 'Database registration failed');
       }
 
       setUploadProgress(100);
+      setUploadPhase('Complete!');
 
       // Refresh models list from live DB
       await loadModels();
 
       setIsUploading(false);
       setUploadProgress(0);
+      setUploadPhase('');
       setTitle('');
       setDescription('');
       setSelectedFile(null);
       if (fileInputRef.current) fileInputRef.current.value = '';
 
-      setSuccessMsg(
-        `✓ "${data.model.title}" uploaded and set as the active 3D walkthrough model!`
-      );
+      setSuccessMsg(`✓ "${regData.model.title}" uploaded and is now the active 3D walkthrough model!`);
       setTimeout(() => setSuccessMsg(''), 6000);
+
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`Upload failed: ${msg}`);
       setIsUploading(false);
       setUploadProgress(0);
+      setUploadPhase('');
     }
   };
 
@@ -121,22 +164,30 @@ export default function AdminModelsPage() {
     await loadModels();
   };
 
-  const handleDelete = async (id: string, title: string) => {
-    if (confirm(`Are you sure you want to delete "${title}"? This cannot be undone.`)) {
+  const handleDelete = async (id: string, modelTitle: string) => {
+    if (confirm(`Delete "${modelTitle}"? This cannot be undone.`)) {
       await mockDb.deleteModel(id);
       await loadModels();
     }
   };
 
   const formatBytes = (bytes: number) => {
+    if (!bytes || bytes === 0) return '—';
     if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
     return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
   };
 
-  const truncateUrl = (url: string) => {
+  const displayPath = (url: string) => {
+    if (!url) return '—';
     if (url.startsWith('data:')) return 'Embedded GLB Data';
-    if (url.length > 60) return url.slice(0, 57) + '…';
-    return url;
+    try {
+      const u = new URL(url);
+      const parts = u.pathname.split('/');
+      const filename = parts[parts.length - 1];
+      return filename.length > 40 ? '...' + filename.slice(-37) : filename;
+    } catch {
+      return url.length > 50 ? url.slice(0, 47) + '…' : url;
+    }
   };
 
   return (
@@ -147,7 +198,7 @@ export default function AdminModelsPage() {
           <div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight">3D Model & Architecture Manager</h1>
             <p className="text-xs text-slate-400 mt-1">
-              Upload GLB models, manage draft/published states, and configure the active walkthrough model.
+              Upload GLB files directly to cloud storage — activate for the live 3D walkthrough.
             </p>
           </div>
           <button
@@ -215,9 +266,13 @@ export default function AdminModelsPage() {
                 <div
                   onDrop={handleDrop}
                   onDragOver={(e) => e.preventDefault()}
-                  onClick={() => fileInputRef.current?.click()}
-                  className={`relative border-2 border-dashed rounded-2xl p-6 text-center bg-slate-950/60 transition cursor-pointer hover:border-sky-500/70 ${
-                    selectedFile ? 'border-sky-500/60 bg-sky-950/20' : 'border-slate-800'
+                  onClick={() => !isUploading && fileInputRef.current?.click()}
+                  className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition cursor-pointer ${
+                    isUploading
+                      ? 'border-sky-500/40 bg-sky-950/20 cursor-not-allowed'
+                      : selectedFile
+                      ? 'border-sky-500/60 bg-sky-950/20 hover:border-sky-400/80'
+                      : 'border-slate-800 bg-slate-950/60 hover:border-sky-500/50'
                   }`}
                 >
                   <input
@@ -225,23 +280,25 @@ export default function AdminModelsPage() {
                     type="file"
                     accept=".glb,.gltf"
                     onChange={handleFileChange}
+                    disabled={isUploading}
                     className="hidden"
                   />
-                  <Upload className={`w-8 h-8 mx-auto mb-2 ${selectedFile ? 'text-sky-400' : 'text-slate-500'}`} />
                   {selectedFile ? (
                     <>
-                      <p className="font-bold text-sky-300">{selectedFile.name}</p>
+                      <CloudUpload className="w-8 h-8 mx-auto mb-2 text-sky-400" />
+                      <p className="font-bold text-sky-300 break-all">{selectedFile.name}</p>
                       <p className="text-[10px] text-slate-400 mt-1">{formatBytes(selectedFile.size)}</p>
                     </>
                   ) : (
                     <>
+                      <Upload className="w-8 h-8 mx-auto mb-2 text-slate-500" />
                       <p className="font-semibold text-white">Drag & drop or click to browse</p>
-                      <p className="text-[10px] text-slate-400 mt-1">Supported: .glb, .gltf — Max 150MB</p>
+                      <p className="text-[10px] text-slate-400 mt-1">Supported: .glb, .gltf — Any size (uploaded directly to cloud)</p>
                     </>
                   )}
                 </div>
 
-                {selectedFile && (
+                {selectedFile && !isUploading && (
                   <button
                     type="button"
                     onClick={() => { setSelectedFile(null); if (fileInputRef.current) fileInputRef.current.value = ''; }}
@@ -254,18 +311,17 @@ export default function AdminModelsPage() {
 
               {/* Progress Bar */}
               {isUploading && (
-                <div className="space-y-1.5">
-                  <div className="flex justify-between text-[10px] text-slate-400 font-mono">
-                    <span>
-                      {uploadProgress < 30 ? 'Preparing...' :
-                       uploadProgress < 85 ? 'Uploading to cloud storage...' :
-                       'Saving to database...'}
+                <div className="space-y-2 p-3 rounded-xl bg-slate-950/60 border border-slate-800">
+                  <div className="flex justify-between text-[10px] text-slate-300 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-pulse" />
+                      {uploadPhase}
                     </span>
-                    <span>{uploadProgress}%</span>
+                    <span className="font-mono">{uploadProgress}%</span>
                   </div>
-                  <div className="w-full h-2 rounded-full bg-slate-950 overflow-hidden">
+                  <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden">
                     <div
-                      className="h-full bg-gradient-to-r from-sky-500 to-blue-600 transition-all duration-500"
+                      className="h-full bg-gradient-to-r from-sky-500 to-blue-600 transition-all duration-500 ease-out"
                       style={{ width: `${uploadProgress}%` }}
                     />
                   </div>
@@ -278,12 +334,12 @@ export default function AdminModelsPage() {
                 className="w-full py-3 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-400 hover:to-blue-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg shadow-sky-500/20 transition flex items-center justify-center gap-2"
               >
                 <Sparkles className="w-4 h-4" />
-                {isUploading ? 'Uploading to Cloud Storage...' : 'Upload & Activate Model'}
+                {isUploading ? 'Uploading to Cloud...' : 'Upload & Activate Model'}
               </button>
 
-              {!selectedFile && (
+              {!selectedFile && !isUploading && (
                 <p className="text-[10px] text-slate-500 text-center">
-                  No file? A sample 3D scene will be used as placeholder.
+                  No file? A sample Sponza scene will be used as placeholder.
                 </p>
               )}
             </form>
@@ -330,7 +386,7 @@ export default function AdminModelsPage() {
                             </span>
                           )}
                           {m.status === 'DRAFT' && (
-                            <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/40">
+                            <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 text-[10px] font-bold border border-amber-500/40">
                               DRAFT
                             </span>
                           )}
@@ -339,8 +395,8 @@ export default function AdminModelsPage() {
                           <p className="text-xs text-slate-400 mt-1 leading-relaxed">{m.description}</p>
                         )}
                         <div className="flex items-center gap-4 text-[10px] text-slate-500 font-mono mt-2">
-                          <span className="truncate" title={m.file_path}>
-                            {truncateUrl(m.file_path)}
+                          <span className="truncate max-w-xs" title={m.file_path}>
+                            {displayPath(m.file_path)}
                           </span>
                           <span className="flex-none">{formatBytes(m.file_size_bytes || 0)}</span>
                         </div>
@@ -355,18 +411,15 @@ export default function AdminModelsPage() {
                             Set Active
                           </button>
                         )}
-
                         <Link
                           href="/walkthrough"
                           className="px-3 py-1.5 rounded-xl bg-sky-500/20 text-sky-400 hover:bg-sky-500 hover:text-white text-xs font-semibold border border-sky-500/40 transition flex items-center gap-1.5"
                         >
                           <Eye className="w-3.5 h-3.5" /> Preview
                         </Link>
-
                         <button
                           onClick={() => handleDelete(m.id, m.title)}
                           className="p-2 rounded-xl bg-slate-900 hover:bg-red-500/20 text-slate-500 hover:text-red-400 border border-slate-800 hover:border-red-500/40 transition"
-                          title="Delete model"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
