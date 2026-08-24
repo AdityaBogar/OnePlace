@@ -63,15 +63,16 @@ export async function GET() {
 -- Run this in the Supabase SQL Editor (https://supabase.com/dashboard)
 -- ================================================================
 
--- 1. Email templates (one per salesperson)
+-- 1. Email templates (one row per salesperson per follow-up number)
 CREATE TABLE IF NOT EXISTS public.email_templates (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   salesperson_id UUID NOT NULL REFERENCES public.profiles(id) ON DELETE CASCADE,
+  follow_up_number INTEGER NOT NULL DEFAULT 1,
   subject TEXT NOT NULL DEFAULT 'Thank you for visiting — Your 3D Tour Highlights',
-  body_html TEXT NOT NULL DEFAULT '',
+  body_text TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-  UNIQUE(salesperson_id)
+  UNIQUE(salesperson_id, follow_up_number)
 );
 
 -- Enable RLS and allow service role full access
