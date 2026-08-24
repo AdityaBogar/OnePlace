@@ -1,6 +1,11 @@
 import { NextResponse } from 'next/server';
-import { mockDb } from '@/lib/supabase/client';
+import { createClient } from '@supabase/supabase-js';
 import { NotificationService } from '@/lib/notifications/service';
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(req: Request) {
   try {
@@ -14,7 +19,6 @@ export async function POST(req: Request) {
       );
     }
 
-    // Email & phone simple format check
     if (!email.includes('@') || !email.includes('.')) {
       return NextResponse.json(
         { success: false, error: 'Please enter a valid email address.' },
@@ -22,31 +26,55 @@ export async function POST(req: Request) {
       );
     }
 
-    // 1. Register visitor in database
-    const { visitor, job } = await mockDb.registerVisitor({
-      salesperson_id,
-      name,
-      email,
-      phone,
-      inquiry_type: inquiry_type || 'General 3D Tour Inquiry',
-      notes,
-    });
+    // 1. Insert visitor
+    const { data: visitor, error: vErr } = await supabase
+      .from('visitors')
+      .insert([{
+        salesperson_id,
+        name,
+        email,
+        phone,
+        inquiry_type: inquiry_type || 'General 3D Tour Inquiry',
+        notes: notes || null,
+      }])
+      .select()
+      .single();
 
-    // 2. Trigger instant follow-up email notification via SendGrid/SMTP
+    if (vErr || !visitor) {
+      return NextResponse.json({ success: false, error: vErr?.message ?? 'Failed to register visitor.' }, { status: 500 });
+    }
+
+    // 2. Communication preferences + inquiry record
+    await supabase.from('communication_preferences').insert([{ visitor_id: visitor.id, opted_out: false }]);
+    await supabase.from('inquiries').insert([{
+      visitor_id: visitor.id,
+      status: 'FOLLOW_UP_SCHEDULED',
+      details: inquiry_type || 'General 3D Tour Inquiry',
+    }]);
+
+    // 3. Follow-up job
+    const scheduledFor = new Date(Date.now() + 60 * 1000).toISOString();
+    const { data: job } = await supabase
+      .from('follow_up_jobs')
+      .insert([{ visitor_id: visitor.id, scheduled_for: scheduledFor, status: 'PENDING', attempts: 0 }])
+      .select()
+      .single();
+
+    // 4. Trigger follow-up notification
     let notificationResults = null;
     try {
-      await mockDb.updateJobStatus(job.id, 'PROCESSING');
-      notificationResults = await NotificationService.processVisitorFollowUp(visitor.id);
-      
-      const emailSuccess = notificationResults.emailResult.success;
-      await mockDb.updateJobStatus(
-        job.id, 
-        emailSuccess ? 'COMPLETED' : 'FAILED', 
-        notificationResults.emailResult.error
-      );
+      if (job) {
+        await supabase.from('follow_up_jobs').update({ status: 'PROCESSING' }).eq('id', job.id);
+        notificationResults = await NotificationService.processVisitorFollowUp(visitor.id);
+        const emailSuccess = notificationResults.emailResult.success;
+        await supabase.from('follow_up_jobs').update({
+          status: emailSuccess ? 'COMPLETED' : 'FAILED',
+          error: notificationResults.emailResult.error ?? null,
+        }).eq('id', job.id);
+      }
     } catch (nErr: unknown) {
-      const nErrorMsg = nErr instanceof Error ? nErr.message : String(nErr);
-      await mockDb.updateJobStatus(job.id, 'FAILED', nErrorMsg);
+      const msg = nErr instanceof Error ? nErr.message : String(nErr);
+      if (job) await supabase.from('follow_up_jobs').update({ status: 'FAILED', error: msg }).eq('id', job.id);
     }
 
     return NextResponse.json({

@@ -25,14 +25,32 @@ export default function VisitorManagementPage() {
     if (!user) return;
     setIsLoading(true);
     try {
-      // SALES users see only their own leads; ADMIN sees all
-      const list = await mockDb.getVisitors(user.role === 'SALES' ? user.id : undefined);
-      setVisitors(list);
+      let salespersonId: string | null = null;
+
+      if (user.role === 'SALES') {
+        // Resolve real Supabase UUID by email (user.id may be a mock ID)
+        const profileRes = await fetch('/api/admin/users');
+        const profileJson = await profileRes.json();
+        const profiles: { id: string; email: string }[] = profileJson.data ?? [];
+        const match = profiles.find(p => p.email.toLowerCase() === user.email.toLowerCase());
+        salespersonId = match?.id ?? user.id;
+      }
+
+      const url = salespersonId
+        ? `/api/visitors?salespersonId=${encodeURIComponent(salespersonId)}`
+        : '/api/visitors';
+
+      const res  = await fetch(url);
+      const json = await res.json();
+      setVisitors(json.data ?? []);
       setLastRefreshed(new Date());
+    } catch (e) {
+      console.error('Failed to load visitors:', e);
     } finally {
       setIsLoading(false);
     }
   }, [user]);
+
 
   useEffect(() => {
     loadVisitors();
