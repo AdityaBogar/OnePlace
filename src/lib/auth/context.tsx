@@ -95,12 +95,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (newPass.length < 6) return false;
 
     const updated = await mockDb.updateProfile(user.id, { must_change_password: false });
-    if (updated) {
-      setUser(updated);
-      router.push(updated.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
-      return true;
-    }
-    return false;
+    const finalProfile: Profile = updated
+      ? { ...updated, must_change_password: false }
+      : { ...user, must_change_password: false };
+
+    setUser(finalProfile);
+    mockDb.currentUser = finalProfile;
+    router.push(finalProfile.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+    return true;
   };
 
   const setUserRole = (role: 'ADMIN' | 'SALES') => {

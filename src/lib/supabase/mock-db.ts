@@ -16,7 +16,7 @@ export const INITIAL_PROFILES: Profile[] = [
     full_name: 'Sarah Jenkins (Sales Exec)',
     email: 'sales@luxestate.com',
     role: 'SALES',
-    must_change_password: true, // triggers first-login password change flow test
+    must_change_password: false,
     is_active: true,
     created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
     updated_at: new Date().toISOString(),

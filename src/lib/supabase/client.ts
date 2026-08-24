@@ -103,6 +103,14 @@ class MockStore {
   }
 
   async updateProfile(id: string, updates: Partial<Profile>): Promise<Profile | null> {
+    const index = this.profiles.findIndex(p => p.id === id);
+    if (index !== -1) {
+      this.profiles[index] = { ...this.profiles[index], ...updates, updated_at: new Date().toISOString() };
+      if (this.currentUser?.id === id) {
+        this.currentUser = this.profiles[index];
+      }
+    }
+
     const client = getSupabaseClient();
     if (client) {
       const { data, error } = await client.from('profiles').update({
@@ -114,13 +122,8 @@ class MockStore {
         return data as Profile;
       }
     }
-    const index = this.profiles.findIndex(p => p.id === id);
-    if (index === -1) return null;
-    this.profiles[index] = { ...this.profiles[index], ...updates, updated_at: new Date().toISOString() };
-    if (this.currentUser?.id === id) {
-      this.currentUser = this.profiles[index];
-    }
-    return this.profiles[index];
+
+    return index !== -1 ? this.profiles[index] : null;
   }
 
   // 3D Models
