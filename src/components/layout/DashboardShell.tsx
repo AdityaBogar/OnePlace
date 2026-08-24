@@ -127,36 +127,8 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
           </nav>
         </div>
 
-        {/* Bottom Actions & Role Switcher */}
-        <div className="p-4 border-t border-slate-800/80 space-y-3">
-          {/* Quick Role Switcher for Dev Demo Testing */}
-          <div className="p-2.5 rounded-xl bg-slate-950/80 border border-slate-800 text-[11px] space-y-1.5">
-            <span className="text-slate-400 font-medium block">Role View Demo:</span>
-            <div className="grid grid-cols-2 gap-1.5">
-              <button
-                onClick={() => {
-                  setUserRole('ADMIN');
-                  router.push('/admin/dashboard');
-                }}
-                className={`py-1 rounded-lg font-bold text-[10px] transition ${
-                  isAdmin ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                ADMIN
-              </button>
-              <button
-                onClick={() => {
-                  setUserRole('SALES');
-                  router.push('/sales/dashboard');
-                }}
-                className={`py-1 rounded-lg font-bold text-[10px] transition ${
-                  !isAdmin ? 'bg-sky-500 text-white' : 'bg-slate-800 text-slate-400 hover:text-white'
-                }`}
-              >
-                SALES
-              </button>
-            </div>
-          </div>
+
+
 
           <button
             onClick={logout}

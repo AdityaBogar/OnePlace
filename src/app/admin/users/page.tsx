@@ -104,6 +104,19 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleRoleChange = async (id: string, newRole: UserRole) => {
+    try {
+      const res = await fetch('/api/admin/users', {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id, role: newRole }),
+      });
+      if (!res.ok) { flash('error', 'Failed to update role.'); return; }
+      setProfiles(prev => prev.map(p => p.id === id ? { ...p, role: newRole } : p));
+    } catch {
+      flash('error', 'Network error.');
+    }
+  };
   const filteredProfiles = profiles.filter((p) => {
     const matchesSearch = p.full_name.toLowerCase().includes(search.toLowerCase()) || p.email.toLowerCase().includes(search.toLowerCase());
     const matchesRole   = roleFilter === 'ALL' || p.role === roleFilter;
@@ -284,6 +297,17 @@ export default function AdminUsersPage() {
                         >
                           {p.is_active ? 'Active' : 'Disabled'}
                         </button>
+
+                        {/* Role change */}
+                        <select
+                          value={p.role}
+                          onChange={(e) => handleRoleChange(p.id, e.target.value as UserRole)}
+                          className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-white focus:outline-none focus:border-sky-500"
+                        >
+                          <option value="SALES">Sales</option>
+                          <option value="FRONT_DESK">Front Desk</option>
+                          <option value="ADMIN">Admin</option>
+                        </select>
 
                         {/* Delete */}
                         {isConfirmingDelete ? (

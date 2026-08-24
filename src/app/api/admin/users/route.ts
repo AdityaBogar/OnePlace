@@ -87,9 +87,6 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: 'id is required' }, { status: 400 });
   }
 
-  // Disallow role changes via this endpoint
-  delete updates.role;
-
   const { data, error } = await supabase
     .from('profiles')
     .update({ ...updates, updated_at: new Date().toISOString() })
