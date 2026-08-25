@@ -92,6 +92,7 @@ export async function POST(req: NextRequest) {
       scheduled_for: scheduledFor,
       status: 'PENDING',
       attempts: 0,
+      follow_up_number: 1,
     }])
     .select()
     .single();

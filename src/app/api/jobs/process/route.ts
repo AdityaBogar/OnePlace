@@ -34,11 +34,18 @@ async function processPendingJobs(req: NextRequest) {
   const processed = [];
 
   for (const job of pendingJobs ?? []) {
-    // Mark as PROCESSING
-    await supabase
+    // Mark as PROCESSING only if it's currently PENDING (concurrency guard)
+    const { data: claimed, error: claimError } = await supabase
       .from('follow_up_jobs')
       .update({ status: 'PROCESSING', updated_at: new Date().toISOString() })
-      .eq('id', job.id);
+      .eq('id', job.id)
+      .eq('status', 'PENDING')
+      .select();
+
+    if (claimError || !claimed || claimed.length === 0) {
+      // Already claimed/processed by another concurrent worker run
+      continue;
+    }
 
     try {
       const followUpNumber = job.follow_up_number ?? 1;

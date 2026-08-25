@@ -348,6 +348,7 @@ class MockStore {
           scheduled_for: scheduledTime,
           status: 'PENDING',
           attempts: 0,
+          follow_up_number: 1,
         }]).select().single();
 
         return {
@@ -662,6 +663,19 @@ class MockStore {
     const client = getSupabaseClient();
     const scheduledFor = new Date(Date.now() + delayMs).toISOString();
     if (client) {
+      // Check if a job with this follow-up number already exists for this visitor to prevent duplicates
+      const { data: existing } = await client
+        .from('follow_up_jobs')
+        .select('id')
+        .eq('visitor_id', visitorId)
+        .eq('follow_up_number', followUpNumber)
+        .limit(1);
+
+      if (existing && existing.length > 0) {
+        console.log(`Job for visitor ${visitorId} and follow-up #${followUpNumber} already exists. Skipping scheduling.`);
+        return null;
+      }
+
       const { data, error } = await client.from('follow_up_jobs').insert([{
         visitor_id: visitorId,
         scheduled_for: scheduledFor,
@@ -671,6 +685,15 @@ class MockStore {
       }]).select().single();
       if (!error && data) return data as FollowUpJob;
     }
+
+    const existing = this.followUpJobs.find(
+      j => j.visitor_id === visitorId && j.follow_up_number === followUpNumber
+    );
+    if (existing) {
+      console.log(`Job for visitor ${visitorId} and follow-up #${followUpNumber} already exists locally. Skipping.`);
+      return existing;
+    }
+
     const newJob: FollowUpJob = {
       id: `job-${Date.now()}`,
       visitor_id: visitorId,

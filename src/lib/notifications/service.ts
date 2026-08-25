@@ -242,10 +242,12 @@ export class NotificationService {
       error_message: whatsappResult.error || null,
     });
 
-    // Track & schedule next (every 1 minute)
-    const newSentCount = await mockDb.incrementFollowUpsSent(visitorId);
-    if (newSentCount < maxFollowUps) {
-      await mockDb.scheduleNextFollowUp(visitorId, followUpNumber + 1, 60000); // 1 minute
+    // Track & schedule next (every 1 minute) only if notification succeeded
+    if (emailResult.success) {
+      const newSentCount = await mockDb.incrementFollowUpsSent(visitorId);
+      if (newSentCount < maxFollowUps) {
+        await mockDb.scheduleNextFollowUp(visitorId, followUpNumber + 1, 60000); // 1 minute
+      }
     }
 
     return { emailResult, whatsappResult };

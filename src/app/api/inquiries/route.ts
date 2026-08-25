@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     const scheduledFor = new Date(Date.now() + 60 * 1000).toISOString();
     const { data: job } = await supabase
       .from('follow_up_jobs')
-      .insert([{ visitor_id: visitor.id, scheduled_for: scheduledFor, status: 'PENDING', attempts: 0 }])
+      .insert([{ visitor_id: visitor.id, scheduled_for: scheduledFor, status: 'PENDING', attempts: 0, follow_up_number: 1 }])
       .select()
       .single();
 
