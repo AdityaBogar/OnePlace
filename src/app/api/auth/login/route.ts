@@ -62,5 +62,5 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ profile });
+  return NextResponse.json({ profile, session: authData.session });
 }

@@ -11,10 +11,12 @@ import {
   Navigation, 
   ArrowLeft, 
   Building2,
-  CheckCircle2
+  CheckCircle2,
+  LogOut
 } from 'lucide-react';
 import { Hotspot } from '@/types/database';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/auth/context';
 
 export type CameraPreset = 'DEFAULT' | 'FRONT' | 'BACK' | 'LEFT' | 'RIGHT' | 'AERIAL';
 
@@ -50,6 +52,7 @@ export function WalkthroughOverlay({
   idleCountdown
 }: WalkthroughOverlayProps) {
   const router = useRouter();
+  const { logout } = useAuth();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showHelp, setShowHelp] = useState(true);
   const [activeTab, setActiveTab] = useState<'presets' | 'hotspots'>('hotspots');
@@ -125,6 +128,17 @@ export function WalkthroughOverlay({
               className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-blue-600 text-white text-xs font-bold shadow-lg shadow-sky-500/25 hover:from-sky-400 hover:to-blue-500 transition border border-sky-400/40"
             >
               <span>Register New Visitor</span>
+            </button>
+          )}
+
+          {isFrontDesk && (
+            <button
+              onClick={logout}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-red-950/80 hover:bg-red-500/20 text-red-400 hover:text-red-300 text-xs font-bold border border-red-800/40 hover:border-red-500/50 backdrop-blur-md transition shadow-xl"
+              title="Sign Out of Kiosk Mode"
+            >
+              <LogOut className="w-4 h-4" />
+              <span>Sign Out</span>
             </button>
           )}
 

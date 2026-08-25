@@ -50,7 +50,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const navItems = isAdmin ? adminNav : salesNav;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row">
+    <div className="h-screen max-h-screen bg-slate-950 text-slate-100 flex flex-col md:flex-row overflow-hidden">
       {/* MOBILE HEADER */}
       <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
         <div className="flex items-center gap-2.5">

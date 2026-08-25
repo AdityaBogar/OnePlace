@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Profile, UserRole } from '@/types/database';
-import { mockDb } from '@/lib/supabase/client';
+import { mockDb, getSupabaseBrowserClient } from '@/lib/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
 
 interface AuthContextType {
@@ -23,15 +23,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Read persisted session or default to Admin in dev
     const storedUserId = localStorage.getItem('luxe_user_id');
     if (storedUserId) {
-      mockDb.getProfileById(storedUserId).then((p) => {
-        if (p) setUser(p);
-        else setUser(mockDb.currentUser);
-        setIsLoading(false);
-      });
+      // Fetch profile from API to bypass client-side RLS timing issues
+      fetch(`/api/auth/profile?id=${storedUserId}`)
+        .then((res) => {
+          if (res.ok) return res.json();
+          throw new Error('Failed to fetch profile');
+        })
+        .then((json) => {
+          if (json.profile) {
+            setUser(json.profile);
+            mockDb.currentUser = json.profile;
+          } else {
+            // Invalid session or profile deleted, clear storage
+            setUser(null);
+            localStorage.removeItem('luxe_user_id');
+          }
+          setIsLoading(false);
+        })
+        .catch((err) => {
+          console.error('Error loading session profile:', err);
+          setUser(null);
+          setIsLoading(false);
+        });
     } else {
+      // Dev mode fallback or kiosk default
       setUser(mockDb.currentUser);
       setIsLoading(false);
     }
@@ -72,6 +89,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       mockDb.currentUser = found;
       localStorage.setItem('luxe_user_id', found.id);
 
+      // Synchronize client-side Supabase browser client
+      const supabase = getSupabaseBrowserClient();
+      if (supabase && json.session) {
+        await supabase.auth.setSession({
+          access_token: json.session.access_token,
+          refresh_token: json.session.refresh_token,
+        });
+      }
+
       if (found.must_change_password) {
         router.push('/change-password');
       } else if (found.role === 'FRONT_DESK') {
@@ -80,13 +106,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push(found.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
       }
       return { success: true };
-    } catch {
-      return { success: false, error: 'Network error. Please try again.' };
+    } catch (err: any) {
+      return { success: false, error: err.message || 'Network error. Please try again.' };
     }
   };
 
 
-  const logout = () => {
+  const logout = async () => {
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      await supabase.auth.signOut();
+    }
     setUser(null);
     mockDb.currentUser = null;
     localStorage.removeItem('luxe_user_id');
@@ -97,20 +127,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) return false;
     if (newPass.length < 6) return false;
 
-    const updated = await mockDb.updateProfile(user.id, { must_change_password: false });
-    const finalProfile: Profile = updated
-      ? { ...updated, must_change_password: false }
-      : { ...user, must_change_password: false };
+    try {
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, newPassword: newPass }),
+      });
+      const json = await res.json();
+      if (!res.ok) {
+        console.error('Change password API failed:', json.error);
+        return false;
+      }
 
-    setUser(finalProfile);
-    mockDb.currentUser = finalProfile;
+      const finalProfile = json.profile;
+      setUser(finalProfile);
+      mockDb.currentUser = finalProfile;
 
-    if (finalProfile.role === 'FRONT_DESK') {
-      router.push('/walkthrough');
-    } else {
-      router.push(finalProfile.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+      if (finalProfile.role === 'FRONT_DESK') {
+        router.push('/walkthrough');
+      } else {
+        router.push(finalProfile.role === 'ADMIN' ? '/admin/dashboard' : '/sales/dashboard');
+      }
+      return true;
+    } catch (err) {
+      console.error('Change password network error:', err);
+      return false;
     }
-    return true;
   };
 
   const setUserRole = (role: UserRole) => {
